@@ -1,0 +1,23 @@
+baixei o installer do python 3.9.13
+
+Ativar o venv dentro do projeto:
+
+(teoricamente só de rodar esse o vs code já percebe o env)
+python -m venv venv
+py -3.9 -m venv venv
+
+
+No terminal do vs code vc faz isso
+./venv/Scripts/activate
+
+pip install --no-cache-dir -r requirements.txt
+
+pip install -r requirements.txt
+
+Caminho do dataset de metastase:
+D:\data\PKG - Pretreat-MetsToBrain-Masks
+
+PROBLEMAS:
+- O cluster gerado não está pegando o mapeamento correto de supervoxels
+- Mesclar os dois códigos de segmentação
+- Definir nova estratégia para pegar a característica do tumor nas redes

@@ -1,0 +1,27 @@
+TODO:
+- definir o preprocessamento / verificar o que o dataset já faz
+- definir quais features serão extraídas / if para carregar todas
+- REDE
+-- estabelecer arestas com 1 - |spearman|
+-- (opcional) remover arestas de valor menor ou igual a um limiar
+-- desenhar a rede
+-- [input A] page rank para escolher os vértices relevantes com um N(opcional)
+-- [input B] label propagation para escolher comunidades e então maior grau em cada uma
+-- pesquisar se salva em um csv ou deixa em tempo de execução
+-- fazer um modelo separado que usa apenas as features escolhidas
+-- fazer um módulo simples que compara com outros modelos
+-- gerar CNN que faz a classificação para comparar o resultado
+
+Feedback Francisco
+- networkx usar o peso, ao inves do treshold
+- definir distancia de outras maneiras
+similaridade com seno
+d = sqrt(1-ro/sqrt(2))
+- eighenvalue ao inves de page rank
+- comunidades pegando o centro
+- verificar desvantagens da auc
+- no free lunch, o resultado só funciona na base testada, comparar com outros
+
+[Menor prioridade]
+Baixar o repo do zero para ver o que precisa estar no requirements
+- achar um segundo dataset para validação mais completa
