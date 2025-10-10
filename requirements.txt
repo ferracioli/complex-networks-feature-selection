@@ -1,1 +1,8 @@
 numpy<2
+pandas
+networkx
+matplotlib
+scikit-learn
+SimpleITK
+pyradiomics
+nibabel

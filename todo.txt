@@ -1,6 +1,6 @@
 TODO:
+- controle de quais features radiômicas serão extraídas / pegar todas
 - definir o preprocessamento / verificar o que o dataset já faz
-- definir quais features serão extraídas / if para carregar todas
 - REDE
 -- estabelecer arestas com 1 - |spearman|
 -- (opcional) remover arestas de valor menor ou igual a um limiar
@@ -11,6 +11,7 @@ TODO:
 -- fazer um modelo separado que usa apenas as features escolhidas
 -- fazer um módulo simples que compara com outros modelos
 -- gerar CNN que faz a classificação para comparar o resultado
+- contar tempo
 
 Feedback Francisco
 - networkx usar o peso, ao inves do treshold

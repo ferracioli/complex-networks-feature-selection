@@ -7,7 +7,7 @@ def generate_exam_dataframe(max_items=None, remotion_list=[]):
     glioma_path = r'D:\data\BraTS-Africa\95_Glioma'
     others_path = r'D:\data\BraTS-Africa\51_OtherNeoplasms'
     clinical_csv = r'D:\data\BraTS-Africa\demography.csv'
-    output_csv = "brats_africa_paths.csv"
+    output_csv = "outputs/brats_africa/brats_africa_paths.csv"
 
     # Carregar CSV clínico
     clinical_df = pd.read_csv(clinical_csv, sep=",")
@@ -89,5 +89,5 @@ def generate_exam_dataframe(max_items=None, remotion_list=[]):
     return merged_df
 
 
-df = generate_exam_dataframe()  # por exemplo, limitar a 100 exames
+# df = generate_exam_dataframe()  # por exemplo, limitar a 100 exames
 # generate_exam_dataframe()
