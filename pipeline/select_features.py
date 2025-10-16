@@ -26,7 +26,7 @@ def select_community_centers(
         centers (list): Selected feature names (community centers).
     """
     # Build or load network
-    G = generate_network(csv_path, threshold, f"outputs/brats_africa/{mapping_file}", png_file)
+    G = generate_network(csv_path, threshold, mapping_file, png_file)
     print("Initial number of features:", G.number_of_nodes())
 
     # --- Detect communities ---

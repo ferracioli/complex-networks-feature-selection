@@ -1,4 +1,7 @@
 TODO:
+-- implement average time(run 5 times each)
+-- analise dos métodos
+
 - controle de quais features radiômicas serão extraídas / pegar todas
 - definir o preprocessamento / verificar o que o dataset já faz
 - REDE

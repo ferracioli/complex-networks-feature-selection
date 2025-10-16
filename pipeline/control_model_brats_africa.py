@@ -38,7 +38,7 @@ def model_benchmarking():
     y = df["glioma"]
 
     # --- Parameter grids ---
-    thresholds = [0.6, 0.7, 0.8]
+    thresholds = [0.3, 0.45, 0.6, 0.7, 0.8]
     link_methods = ["cosine", "spearman", "pearson"]
     community_methods = ["lp", "pr"]
     eigen_options = [False, True]
@@ -57,7 +57,8 @@ def model_benchmarking():
         "community_method": "none",
         "check_eigen": None,
         "accuracy": acc_all,
-        "runtime": control_time
+        "runtime": control_time,
+        "features nb": len(X.columns)
     })
 
     # --- Loop over combinations ---
@@ -91,7 +92,8 @@ def model_benchmarking():
             "community_method": cm,
             "check_eigen": eigen,
             "accuracy": acc,
-            "runtime": runtime
+            "runtime": runtime,
+            "features nb": len(selected)
         })
 
     # --- Summary table ---
