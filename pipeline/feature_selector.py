@@ -9,7 +9,8 @@ def select_community_centers(
     mapping_file="feature_mapping.csv",
     png_file="radiomic_graph.png",
     method="lp",  # "lp" (Label Propagation) as default
-    check_eigen=False  # If True, use eigenvector centrality to refine selection
+    check_eigen=False,  # If True, use eigenvector centrality to refine selection
+    dataset="brats_africa"
 ):
     """
     Detect feature communities in a prebuilt network and return center features.
@@ -26,10 +27,10 @@ def select_community_centers(
         centers (list): Selected feature names (community centers).
     """
     # Build or load network
-    G = generate_network(csv_path, threshold, mapping_file, png_file)
+    G = generate_network(csv_path, threshold, mapping_file, png_file, dataset)
     print("Initial number of features:", G.number_of_nodes())
 
-    # --- Detect communities ---
+    # Detecting communities
     if method == "lp":
         communities = list(nx.algorithms.community.label_propagation_communities(G))
     elif method == "pr":
@@ -76,35 +77,3 @@ def select_community_centers(
 
     print("Selected features:", centers)
     return centers
-
-
-# import pandas as pd
-# import networkx as nx
-# from pipeline.build_network import generate_network
-
-# def select_community_centers(csv_path, threshold=0.7, mapping_file="feature_mapping.csv", png_file="radiomic_graph.png"):
-#     """
-#     Detect feature communities in a prebuilt network and return center features.
-
-#     Args:
-#         G (nx.Graph): Prebuilt feature correlation network.
-
-#     Returns:
-#         centers (list): Selected feature names (community centers).
-#     """
-#     G = generate_network(csv_path, threshold, mapping_file, png_file)
-
-#     print("Initial number of features:", G.number_of_nodes())
-
-#     # Detect communities via label propagation
-#     communities = list(nx.algorithms.community.label_propagation_communities(G))
-
-#     centers = []
-#     for community in communities:
-#         subgraph = G.subgraph(community)
-#         # Pick the node with highest degree as the community center
-#         center = max(subgraph.degree, key=lambda x: x[1])[0]
-#         centers.append(center)
-
-#     print("Selected features:", centers)
-#     return centers

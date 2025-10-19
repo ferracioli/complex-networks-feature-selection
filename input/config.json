@@ -1,0 +1,8 @@
+{
+    "brats_africa": {
+        "glioma_path": "D:\\data\\BraTS-Africa\\95_Glioma",
+        "others_path": "D:\\data\\BraTS-Africa\\51_OtherNeoplasms",
+        "clinical_csv": "D:\\data\\BraTS-Africa\\demography.csv",
+        "output_path": "outputs/brats_africa/"
+    }
+}

@@ -7,8 +7,8 @@ TODO:
 - REDE
 -- (opcional) remover arestas de valor menor ou igual a um limiar
 -- salvar resultados em json/csv
--- fazer um módulo simples que compara com outros modelos
 -- gerar CNN que faz a classificação para comparar o resultado
+-- [DONE]fazer um módulo simples que compara com outros modelos
 -- [DONE]estabelecer arestas com 1 - |spearman|
 -- [DONE]desenhar a rede
 -- [DONE][input A] page rank para escolher os vértices relevantes com um N(opcional)
@@ -27,5 +27,5 @@ Feedback Francisco
 - [DONE]comunidades pegando o centro
 
 [Menor prioridade]
-Baixar o repo do zero para ver o que precisa estar no requirements
+- Baixar o repo do zero para ver o que precisa estar no requirements
 - achar um segundo dataset para validação mais completa
