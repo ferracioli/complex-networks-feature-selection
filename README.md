@@ -18,6 +18,9 @@ Only run the command during your first run, according to the python command
 Or, if you want to force the reinstalation ignoring cache:
 `pip install --no-cache-dir -r requirements.txt`
 
+-5: Run the main file
+`python .\main.py`
+
 ### Supplementary information
 During the setup for the experiment, an external disk was used to store all the datasets used during the project. This may not impact the running of the application, and you can store the dataset at the same disk as the source code, as long as you have enough storage and map the root folder.
 

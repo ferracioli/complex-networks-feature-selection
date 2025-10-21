@@ -10,7 +10,8 @@ def select_community_centers(
     png_file="radiomic_graph.png",
     method="lp",  # "lp" (Label Propagation) as default
     check_eigen=False,  # If True, use eigenvector centrality to refine selection
-    dataset="brats_africa"
+    dataset="brats_africa",
+    link_method="spearman",
 ):
     """
     Detect feature communities in a prebuilt network and return center features.
@@ -27,7 +28,10 @@ def select_community_centers(
         centers (list): Selected feature names (community centers).
     """
     # Build or load network
-    G = generate_network(csv_path, threshold, mapping_file, png_file, dataset)
+    G, _ = generate_network(csv_path=csv_path, threshold=threshold, 
+                         mapping_file=mapping_file, link_method=link_method,
+                         dataset=dataset)
+
     print("Initial number of features:", G.number_of_nodes())
 
     # Detecting communities

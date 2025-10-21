@@ -1,6 +1,13 @@
 TODO:
+-- use the same output from the radiomic feature analysys tool
+-- check how set the number of features when possible
+-- optimize the flow since the fully connected network takes forever
+
+- pintar comunidades selecionadas
 -- implement average time(run 5 times each)
 -- analise dos métodos
+- A REDE NAO ESTA COMPLETAMENTE CONECTADA
+-  scores tem valores muito repetidos(suspeitos!!!)
 
 - controle de quais features radiômicas serão extraídas / pegar todas
 - definir o preprocessamento / verificar o que o dataset já faz

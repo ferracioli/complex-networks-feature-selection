@@ -16,7 +16,7 @@ def generate_exam_dataframe(max_items=None, remotion_list=[], dataset="brats_afr
     glioma_path = config[dataset]["glioma_path"]
     others_path = config[dataset]["others_path"]
     clinical_csv = config[dataset]["clinical_csv"]
-    output_csv = f"{config[dataset]["output_path"]}{dataset}_paths.csv"
+    output_csv = f"{config[dataset]['output_path']}{dataset}_paths.csv"
 
     # Loading the clinical CSV
     clinical_df = pd.read_csv(clinical_csv, sep=",")

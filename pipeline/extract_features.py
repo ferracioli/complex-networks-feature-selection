@@ -32,8 +32,8 @@ def extract_radiomic_features(
         pd.DataFrame: Extracted radiomic features.
     """
 
-    input_csv = f"{config[dataset]["output_folder"]}{dataset}_paths.csv"
-    output_csv = f"{config[dataset]["output_folder"]}{dataset}_radiomic_features.csv"
+    input_csv = f"{config[dataset]['output_path']}{dataset}_paths.csv"
+    output_csv = f"{config[dataset]['output_path']}{dataset}_radiomic_features.csv"
 
     # Loading the csv containing exam paths
     df = pd.read_csv(input_csv)
