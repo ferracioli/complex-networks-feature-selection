@@ -27,3 +27,8 @@ During the setup for the experiment, an external disk was used to store all the 
 The first dataset used was the BraTS Africa, and the URL for loading the dataset can be found at: https://www.cancerimagingarchive.net/collection/BraTS-Africa/
 
 It is important to notice that the class dataframe at this dataset was manually mapped, and the mapped file will be available at the repository[TODO]. Before starting the code execution, you must paste the initial mapping file to your dataset.
+
+
+### Sample dataset
+Patients with original_shape_MajorAxisLength ≥ 56 → target = 1.
+Others → target = 0.

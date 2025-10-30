@@ -1,13 +1,19 @@
 TODO:
--- use the same output from the radiomic feature analysys tool
--- check how set the number of features when possible
--- optimize the flow since the fully connected network takes forever
+- Create a dummy radiomic dataset to run the functions
+- [TEST]All feature-selection steps (LassoCV, mutual_info_classif, RandomForest importances, RFE, and 
+your graph-based selection via select_community_centers) are computed on the whole dataset before 
+splitting into train/test. Then you train/evaluate on a later split → this leaks information and 
+biases results upward.
 
-- pintar comunidades selecionadas
+-- use the same output from the radiomic feature analysys tool
+-- check how set the number of features when possible for Page Rank
+-- [TEST]optimize the flow since the fully connected network takes forever
+
+- [TEST]pintar comunidades selecionadas
 -- implement average time(run 5 times each)
 -- analise dos métodos
-- A REDE NAO ESTA COMPLETAMENTE CONECTADA
 -  scores tem valores muito repetidos(suspeitos!!!)
+- [DONE]A REDE NAO ESTA COMPLETAMENTE CONECTADA
 
 - controle de quais features radiômicas serão extraídas / pegar todas
 - definir o preprocessamento / verificar o que o dataset já faz
