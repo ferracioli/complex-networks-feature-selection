@@ -1,8 +1,66 @@
 {
     "brats_africa": {
+        "target_column": "glioma",
         "glioma_path": "D:\\data\\BraTS-Africa\\95_Glioma",
         "others_path": "D:\\data\\BraTS-Africa\\51_OtherNeoplasms",
         "clinical_csv": "D:\\data\\BraTS-Africa\\demography.csv",
-        "output_path": "outputs/brats_africa/"
+        "output_path": "outputs/brats_africa/",
+        "to_remove_columns": [],
+        "grid_params": {
+            "thresholds": [0.0, 0.15, 0.3, 0.5, 0.55, 0.6, 0.65, 0.7],
+            "link_methods": ["Cosine", "Spearman", "Pearson", "Rho distance"],
+            "cn_selectors": ["Label Propagation", "Bridging Centrality", "Louvain", "Structural Diversity"]
+        }
+    },
+    "nsclc": {
+        "target_column": "clinical.T.Stage",
+        "output_path": "outputs/nsclc/",
+        "to_remove_columns": ["PatientName","Age","clinical.T.Stage","Clinical.N.Stage","Clinical.M.Stage","Overall.Stage","Histology","Gender","Survival.time","deadstatus.event","Normalization","binWidth","diagnostics_Versions_PyRadiomics","diagnostics_Versions_Numpy","diagnostics_Versions_SimpleITK","diagnostics_Versions_PyWavelet","diagnostics_Versions_Python","diagnostics_Configuration_Settings","diagnostics_Configuration_EnabledImageTypes","diagnostics_Image-original_Hash","diagnostics_Image-original_Dimensionality","diagnostics_Image-original_Spacing","diagnostics_Image-original_Size","diagnostics_Image-original_Mean","diagnostics_Image-original_Minimum","diagnostics_Image-original_Maximum","diagnostics_Mask-original_Hash","diagnostics_Mask-original_Spacing","diagnostics_Mask-original_Size","diagnostics_Mask-original_BoundingBox","diagnostics_Mask-original_VoxelNum","diagnostics_Mask-original_VolumeNum","diagnostics_Mask-original_CenterOfMassIndex","diagnostics_Mask-original_CenterOfMass"],
+        "grid_params": {
+            "thresholds": [0.0, 0.15, 0.3, 0.6, 0.65, 0.7, 0.75, 0.8],
+            "link_methods": ["Cosine", "Spearman", "Pearson", "Rho distance"],
+            "cn_selectors": ["Label Propagation", "Bridging Centrality", "Louvain", "Structural Diversity"]
+        }
+    },
+    "nsclc_drop_rare_classes": {
+        "target_column": "clinical.T.Stage",
+        "output_path": "outputs/nsclc_drop_rare_classes/",
+        "to_remove_columns": ["PatientName","Age","clinical.T.Stage","Clinical.N.Stage","Clinical.M.Stage","Overall.Stage","Histology","Gender","Survival.time","deadstatus.event","Normalization","binWidth","diagnostics_Versions_PyRadiomics","diagnostics_Versions_Numpy","diagnostics_Versions_SimpleITK","diagnostics_Versions_PyWavelet","diagnostics_Versions_Python","diagnostics_Configuration_Settings","diagnostics_Configuration_EnabledImageTypes","diagnostics_Image-original_Hash","diagnostics_Image-original_Dimensionality","diagnostics_Image-original_Spacing","diagnostics_Image-original_Size","diagnostics_Image-original_Mean","diagnostics_Image-original_Minimum","diagnostics_Image-original_Maximum","diagnostics_Mask-original_Hash","diagnostics_Mask-original_Spacing","diagnostics_Mask-original_Size","diagnostics_Mask-original_BoundingBox","diagnostics_Mask-original_VoxelNum","diagnostics_Mask-original_VolumeNum","diagnostics_Mask-original_CenterOfMassIndex","diagnostics_Mask-original_CenterOfMass"],
+        "grid_params": {
+            "thresholds": [0.0, 0.15, 0.3, 0.6, 0.65, 0.7, 0.75, 0.8],
+            "link_methods": ["Cosine", "Spearman", "Pearson", "Rho distance"],
+            "cn_selectors": ["Label Propagation", "Bridging Centrality", "Louvain", "Structural Diversity"]
+        }
+    },
+    "radiomics_lgg": {
+        "target_column": "Mutacion",
+        "clinical_csv": "C:\\Users\\GabrielFerracioli\\Documents\\radiomics-LGG",
+        "output_path": "outputs/radiomics_lgg/",
+        "to_remove_columns": [],
+        "grid_params": {
+            "thresholds": [0.0, 0.15, 0.3, 0.5, 0.55, 0.6, 0.65, 0.7],
+            "link_methods": ["Cosine", "Spearman", "Pearson", "Rho distance"],
+            "cn_selectors": ["Label Propagation", "Bridging Centrality", "Louvain", "Structural Diversity"]
+        }
+    },
+    "brats_africa_winner": {
+        "target_column": "glioma",
+        "output_path": "outputs/brats_africa_winner/",
+        "to_remove_columns": [],
+        "grid_params": {
+            "thresholds": [0.5, 0.55, 0.6, 0.65, 0.7],
+            "link_methods": ["Cosine"],
+            "cn_selectors": ["Label Propagation", "Bridging Centrality", "Louvain", "Structural Diversity"]
+        }
+    },
+    "sample": {
+        "target_column": "target",
+        "output_path": "outputs/sample/",
+        "to_remove_columns": [],
+        "grid_params": {
+            "thresholds": [0.0, 0.15, 0.3, 0.5, 0.55, 0.6, 0.65, 0.7],
+            "link_methods": ["Cosine", "Spearman", "Pearson", "Rho distance"],
+            "cn_selectors": ["Label Propagation", "Bridging Centrality", "Louvain", "Structural Diversity"]
+        }
     }
 }

@@ -1,541 +1,553 @@
 import pandas as pd
 import time
 import itertools
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report, accuracy_score
-from pipeline.feature_selector import select_community_centers
 import json
 import numpy as np
-from sklearn.linear_model import LassoCV
+from sklearn.metrics import accuracy_score, balanced_accuracy_score, roc_auc_score
+from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import LabelEncoder
 from sklearn.feature_selection import mutual_info_classif, RFE
 from sklearn.svm import SVC
+from pipeline.feature_selector import select_cn_centers
+from sklearn.feature_selection import VarianceThreshold
+import pipeline.model_plots as plots
+from sklearn.model_selection import StratifiedKFold
+import warnings
+from itertools import combinations
+from sklearn.exceptions import ConvergenceWarning
+from sklearn.feature_selection import f_classif
+from boruta import BorutaPy
+from sklearn.linear_model import LogisticRegression
+from pipeline.GFSIR.graph_feature_selection import GraphFeatureSelection
+warnings.filterwarnings("ignore", category=ConvergenceWarning)
 
 # Loading the config json
 with open('input/config.json', 'r') as file:
     config = json.load(file)
 
-import tempfile
-import os
-from sklearn.feature_selection import SelectFromModel
-from sklearn.linear_model import LassoCV
+# Feature stability calculated with Jaccard between folds
+def jaccard(a, b):
+    a, b = set(a), set(b)
+    if len(a | b) == 0:
+        return np.nan
+    return len(a & b) / len(a | b)
 
-# def run_model(X, y, description=""):
-#     """Train and evaluate a Random Forest model."""
-#     le = LabelEncoder()
-#     y_encoded = le.fit_transform(y.astype(str))
+def compute_auroc(y_true, y_proba, model):
+    """
+    Computes AUROC for binary or multiclass problems.
+    Ensures consistency across CV folds by restricting to present classes.
+    """
+    present_classes = np.unique(y_true)
 
-#     X_train, X_test, y_train, y_test = train_test_split(
-#         X, y_encoded, test_size=0.2, random_state=42, stratify=y_encoded
-#     )
+    # AUROC undefined if <2 classes
+    if len(present_classes) < 2:
+        return np.nan
 
-#     scaler = StandardScaler()
-#     X_train = scaler.fit_transform(X_train)
-#     X_test = scaler.transform(X_test)
+    # Binary dataset
+    if len(present_classes) == 2:
+        pos_idx = list(model.classes_).index(present_classes.max())
+        return roc_auc_score(y_true, y_proba[:, pos_idx])
 
-#     model = RandomForestClassifier(n_estimators=200, random_state=42)
-#     model.fit(X_train, y_train)
+    # Multiclass: restrict to present classes only
+    mask = np.isin(model.classes_, present_classes)
 
-#     y_pred = model.predict(X_test)
-#     acc = accuracy_score(y_test, y_pred)
+    return roc_auc_score(
+        y_true,
+        y_proba[:, mask],
+        labels=present_classes,
+        multi_class="ovr",
+        average="macro"
+    )
 
-#     print(f"\n=== Results {description} ===")
-#     print(f"Accuracy: {acc:.4f}")
-#     return acc
+# Bridge for calling selectors and running models between folds
+def run_eval(model_data, selector_fn, selector_name, selector_params=None, kf=None):
+    print("\nRunning with selector:", selector_name)
+    if selector_params is not None:
+        print(f"Params: {selector_params}")
+    if kf is not None:
+        return evaluate_with_kfold(
+            kf,
+            model_data['X'], model_data['y'],
+            selector_fn=selector_fn,
+            selector_name=selector_name,
+            selector_params=selector_params
+        )
+    else:
+        return evaluate_with_predefined_split(
+            model_data['X_train'], model_data['X_test'], model_data['y_train'], model_data['y_test'],
+            selector_fn=selector_fn,
+            selector_name=selector_name,
+            selector_params=selector_params
+        )
+
+# This module can be used if no kfold approach is available
+def evaluate_with_predefined_split(
+    X_train, X_test, y_train, y_test,
+    selector_fn, selector_name, selector_params=None
+):
+
+    if selector_params is None:
+        selector_params = {}
+    else:
+        selector_params = dict(selector_params)
+    selector_params["seed"] = 42
+    selector_params["save_fig"] = True
+
+    start = time.time()
+
+    if selector_fn is None:
+        selected = X_train.columns.tolist()
+    else:
+        selected = selector_fn(X_train, y_train, selector_params)
+
+    if len(selected) == 0:
+        return None
+
+    runtime = time.time() - start
+    if selector_fn is None:
+        runtime = 0
+
+    model = RandomForestClassifier(
+        n_estimators=200,
+        random_state=42,
+        class_weight="balanced"
+    )
+    model.fit(X_train[selected], y_train)
+    y_pred = model.predict(X_test[selected])
+    y_proba = model.predict_proba(X_test[selected])
+
+    acc = accuracy_score(y_test, y_pred)
+    bal_acc = balanced_accuracy_score(y_test, y_pred)
+    auroc = compute_auroc(y_test, y_proba, model)
+
+    print(f"acc: {acc}, bal_acc: {bal_acc}, auroc: {auroc}")
+    print(f"Runtime: {runtime}, selected features: {len(selected)}")
+    return {
+        "selector": selector_name,
+        "link_method": selector_params.get("link") if selector_params else None,
+        "threshold": selector_params.get("threshold") if selector_params else None,
+        "cn_selector": selector_params.get("cn_selector") if selector_params else None,
+        "accuracy_mean": acc,
+        "accuracy_std": 0.0,
+        "balanced_accuracy_mean": bal_acc,
+        "balanced_accuracy_std": 0.0,
+        "auroc_mean": auroc,
+        "auroc_std": 0.0,
+        "runtime_mean": runtime,
+        "features_mean": len(selected),
+        "selected_features": selected
+    }
+
+# Select features, run the model and extract metrics
+def evaluate_with_kfold(kf, X, y, selector_fn, selector_name, selector_params=None):
+
+    # Copy the dictionary to avoid misuse out of the function
+    if selector_params is None:
+        selector_params = {}
+    else:
+        selector_params = dict(selector_params)  # defensive copy
+
+    bal_accs = []
+    accs = []
+    runtimes = []
+    selected_features_all = []
+    n_features_all = []
+    aurocs = []
+    selector_params["save_fig"] = True
+
+    for fold, (train_idx, test_idx) in enumerate(kf.split(X, y)):
+        X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
+        y_train, y_test = y[train_idx], y[test_idx]
+
+        start = time.time()
+
+        if selector_fn is None:
+            selected = X.columns.tolist()
+        else:
+            selector_params["seed"] = 42 + fold
+            selected = selector_fn(X_train, y_train, selector_params)
+            selector_params["save_fig"] = False
+            # Only the first fold will generate a plot
+
+        selected = [f for f in selected if f in X.columns]
+        if len(selected) == 0:
+            warnings.warn(
+                f"[Fold {fold}] No features selected by {selector_name}. Recording NaNs.",
+                RuntimeWarning
+            )
+            accs.append(np.nan)
+            bal_accs.append(np.nan)
+            aurocs.append(np.nan)
+            runtime = time.time() - start
+            runtimes.append(runtime)
+            selected_features_all.append([])
+            n_features_all.append(0)
+            continue
+
+        runtime = time.time() - start
+
+        model = RandomForestClassifier(
+            n_estimators=200,
+            random_state=42 + fold,
+            class_weight="balanced"
+        )
+        model.fit(X_train[selected], y_train)
+        y_pred = model.predict(X_test[selected])
+        y_proba = model.predict_proba(X_test[selected])
+
+        accs.append(accuracy_score(y_test, y_pred))
+        bal_accs.append(balanced_accuracy_score(y_test, y_pred))
+        aurocs.append(compute_auroc(y_test, y_proba, model))
+        if selector_fn is None:
+            runtimes.append(0)
+        else:
+            runtimes.append(runtime)
+        selected_features_all.append(selected)
+        n_features_all.append(len(selected))
+
+    if len(selected_features_all) > 1:
+        stability = np.nanmean([
+            jaccard(a, b)
+            for a, b in combinations(selected_features_all, 2)
+        ])
+    else:
+        stability = np.nan
+
+    print(f"acc mean: {np.mean(accs)}, bal_acc mean: {np.mean(bal_accs)}, auroc mean: {np.mean(aurocs)}")
+    print(f"Runtime mean: {np.mean(runtimes)}, selected features mean: {int(np.mean(n_features_all))}")
+    return {
+        "selector": selector_name,
+        "link_method": selector_params.get("link") if selector_params else None,
+        "threshold": selector_params.get("threshold") if selector_params else None,
+        "cn_selector": selector_params.get("cn_selector") if selector_params else None,
+        "accuracy_mean": np.mean(accs),
+        "accuracy_std": np.std(accs),
+        "balanced_accuracy_mean": np.mean(bal_accs),
+        "balanced_accuracy_std": np.std(bal_accs),
+        "auroc_mean": np.mean(aurocs),
+        "auroc_std": np.std(aurocs),
+        "feature_stability": stability,
+        "runtime_mean": np.mean(runtimes),
+        "features_mean": int(np.mean(n_features_all))
+    }
+
+# included an L1-regularized logistic regression as a sparse linear baseline instead of LASSO
+def l1logistic_selector(X_train, y_train, params=None):
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X_train)
+
+    model = LogisticRegression(
+        penalty="l1",
+        solver="saga",
+        C=1.0,
+        class_weight="balanced",
+        max_iter=5000,
+    )
+    model.fit(X_scaled, y_train)
+
+    coef = np.abs(model.coef_).sum(axis=0)
+    return X_train.columns[coef > 1e-6].tolist()
+
+def mi_selector(X_train, y_train, params=None):
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X_train)
+    scores = mutual_info_classif(X_scaled, y_train, random_state=42)
+    threshold = np.median(scores)
+    return X_train.columns[scores >= threshold].tolist()
+
+def variance_selector(X_train, y_train, params=None):
+    vt = VarianceThreshold(threshold=1e-5)
+    vt.fit(X_train)
+    return X_train.columns[vt.get_support()].tolist()
+
+def rfe_selector(X_train, y_train, params=None):
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X_train)
+
+    svc = SVC(kernel="linear", random_state=42)
+    n_features = max(1, int(X_train.shape[1] * 0.5))
+
+    rfe = RFE(
+        estimator=svc,
+        n_features_to_select=n_features
+    )
+    rfe.fit(X_scaled, y_train)
+
+    return X_train.columns[rfe.support_].tolist()
+
+def anova_selector(X_train, y_train, params=None):
+    scores, _ = f_classif(X_train, y_train)
+    threshold = np.nanmedian(scores)
+    return X_train.columns[scores >= threshold].tolist()
+
+def _gfsir_memory_selector(X_train, y_train, params=None, method="Graph-ConnectedComponents"):
+
+    # You must obtain the GFSIR repository for requesting this selector
+    selector = GraphFeatureSelection(
+        input_dir=".",
+        output_dir=".",
+        lower_threshold=0.3,
+        upper_threshold=1.0,
+        n_features=20
+    )
+
+    df_selected = selector.apply_graph_feature_selection(
+        X_train.copy(),
+        method=method,
+        mode="manual"
+    )
+
+    return df_selected.columns.tolist()
+
+def gfsir_connected(X_train, y_train, params=None):
+    return _gfsir_memory_selector(
+        X_train, y_train, params,
+        method="Graph-ConnectedComponents"
+    )
+
+def gfsir_louvain(X_train, y_train, params=None):
+    return _gfsir_memory_selector(
+        X_train, y_train, params,
+        method="Graph-Louvain"
+    )
+
+def gfsir_spectral(X_train, y_train, params=None):
+    return _gfsir_memory_selector(
+        X_train, y_train, params,
+        method="Graph-SpectralClustering"
+    )
+
+def boruta_selector(X_train, y_train, params=None):
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X_train)
+
+    # Random Forest required by Boruta
+    rf = RandomForestClassifier(
+        n_estimators=500,
+        random_state=42,
+        n_jobs=-1,
+        class_weight="balanced"
+    )
+
+    boruta = BorutaPy(
+        estimator=rf,
+        n_estimators="auto",
+        random_state=42,
+        verbose=0
+    )
+
+    y_array = y_train.values if hasattr(y_train, "values") else y_train
+    boruta.fit(X_scaled, y_array)
+
+    return X_train.columns[boruta.support_].tolist()
+
+def graph_selector(X_train, y_train, params):
+    assert params is not None
+    return select_cn_centers(
+        X_train,
+        threshold=params["threshold"],
+        cn_selector=params["cn_selector"],
+        link_method=params["link"],
+        seed_nb=params["seed"],
+        save_fig=params["save_fig"],
+        png_path = f"outputs/{params['dataset']}/feature_plots/{params['dataset']}_{params['link']}_{params['threshold']:.2f}_{params['cn_selector']}_radiomic_graph.png",
+    )
+
+# Estimative of the best threshold values for a given dataset
+# currently only checking Pearson and Spearman
+def estimate_best_graph_params(X):
+    """
+    Unsupervised estimator of graph parameters.
+    Uses only feature correlations.
+    """
+
+    results = {}
+    print("\n=== Automatic Graph Parameter Estimation ===")
+
+    link_methods = ("pearson", "spearman")
+
+    # Find the threshold interval where only 15% of the data survives
+    # this range will have a low amount of correlated features, and will
+    # have a smaller cost comparing with the complete network
+    TARGET_DENSITY = 0.15
+    TH_GRID = np.linspace(0.3, 0.9, 61)
+
+    for link in link_methods:
+        corr = X.corr(method=link)
+
+        # Upper triangle only
+        upper = corr.where(np.triu(np.ones(corr.shape), k=1).astype(bool))
+        vals = np.abs(upper.values)
+        vals = vals[~np.isnan(vals)]
+        vals = vals[vals < 0.99]  # drop near-duplicate features
+
+        mean_corr = vals.mean()
+        median_corr = np.median(vals)
+
+        densities = np.array([np.mean(vals >= th) for th in TH_GRID])
+        best_idx = np.argmin(np.abs(densities - TARGET_DENSITY))
+        # Forcing networking density to reach 0.15
+
+        base_th = TH_GRID[best_idx]
+        density = densities[best_idx]
+        th_range = (max(0.0, base_th - 0.1), min(1.0, base_th + 0.1))
+
+        results[link] = {
+            "mean_corr": mean_corr,
+            "median_corr": median_corr,
+            "threshold": base_th,
+            "density": density,
+            "range": th_range
+        }
+
+    # Select best link method (balanced density)
+    best_link = min(
+        results.keys(),
+        key=lambda k: abs(results[k]["density"] - TARGET_DENSITY)
+    )
+
+    best = results[best_link]
+
+    print("\n=== Recommended Parameters ===")
+    print(f"link_method   : {best_link}")
+    print(f"threshold     : {best['threshold']:.2f}")
+    print(f"density       : {best['density']:.3f}")
+    print(f"threshold_rng : {best['range']}")
+
+    return f"Expected ideal threshold range: {best['threshold']}"
 
 def run_model_with_splits(X_train, X_test, y_train, y_test, description=""):
-    scaler = StandardScaler()
-    X_train = scaler.fit_transform(X_train)
-    X_test = scaler.transform(X_test)
-    model = RandomForestClassifier(n_estimators=200, random_state=42)
+    # The baseline model is always Random Forest
+    model = RandomForestClassifier(n_estimators=200, random_state=42,class_weight="balanced")
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
     acc = accuracy_score(y_test, y_pred)
+    bal_acc = balanced_accuracy_score(y_test, y_pred)
     print(f"\n=== Results {description} ===")
-    print(f"Accuracy: {acc:.4f}")
-    return acc
+    print(f"Accuracy: {acc:.4f}, Bal acc: {bal_acc:.4f}")
+    return acc, bal_acc
 
-def model_benchmarking(dataset="brats_africa"):
+def model_benchmarking(dataset="sample"):
 
-    # Parameter grids
-    # thresholds = [0.0, 0.15, 0.3, 0.45, 0.6, 0.7, 0.8]
-    thresholds = [0.0, 0.15, 0.3, 0.45, 0.7]
-    link_methods = ["cosine", "spearman", "pearson", "rho_distance"]
-    community_methods = ["lp", "pr"]
-    eigen_options = [False, True]
-    classical_selectors = ["lasso", "information_gain", "gini"]
+    thresholds = config[dataset]['grid_params']['thresholds']
+    link_methods = config[dataset]['grid_params']['link_methods']
+    cn_selectors = config[dataset]['grid_params']['cn_selectors']
 
-    # rfe takes forever
-    # thresholds = [0.0, 0.3]
-    # link_methods = ["pearson"]
-    # community_methods = ["lp", "pr"]
-    # eigen_options = [False]
-    # classical_selectors = ["lasso", "information_gain", "gini"]
-
+    # Loading the original radiomic features
     radiomic_features_path = f"{config[dataset]['output_path']}{dataset}_radiomic_features.csv"
-
     df = pd.read_csv(radiomic_features_path)
+
     total_time_start = time.time()
 
     # Drop columns not related to the features
-    X = df.drop(columns=["glioma", "exam_path", "gt_path", "patient_id"])
-    y = df["glioma"] # Target definition
+    tg_column = config[dataset]["target_column"]
+    model_data = {}
 
-    # IMPORTANT: these sets will be used in the entire code
-    # inside model_benchmarking, instead of selecting on full X:
-    X_train_full, X_test_full, y_train_full, y_test_full = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
-    )
+    # Remove rows where target (y) is NaN
+    df = df.dropna(subset=[tg_column])
 
-    # Store results
+    # The NSCLC dataset has a class with only 2 obvervations
+    # A version with all dataset will be used, and also one dropping this class
+    # This was a blocker to a wider CV size
+    if "drop_rare_classes" in dataset:
+        class_counts = df[tg_column].value_counts()
+        valid_classes = class_counts[class_counts >= 5].index
+
+        removed = set(class_counts.index) - set(valid_classes)
+        if len(removed) > 0:
+            print(f"Dropping rare classes: {removed}")
+
+        df = df[df[tg_column].isin(valid_classes)]
+
+    static_remove = [tg_column, "exam_path", "gt_path", "patient_id"]
+    dynamic_remove = config[dataset].get("to_remove_columns", [])
+    columns_to_remove = static_remove + dynamic_remove
+    model_data['X'] = df.drop(columns=columns_to_remove, errors="ignore")
+    
+    le = LabelEncoder() # Converting target from str to nmb (required for NSCLC)
+    y = le.fit_transform(df[tg_column])
+    model_data['y'] = np.asarray(y)
+    use_kfold = True
+
+    # Storing results to final benchmarking
     results = []
 
-    # Control model
-    print("\nRunning control model (all features)")
-    # t0 = time.time()
-    acc_all = run_model_with_splits(X_train_full, X_test_full, y_train_full, y_test_full, description="Vanilla model")
-    # control_time = time.time() - t0
-    results.append({
-        "selector": "none",
-        "link_method": "none",
-        "threshold": None,
-        "community_method": "none",
-        "check_eigen": None,
-        "accuracy": acc_all,
-        "runtime(sec)": "none",
-        "features nb": len(X_train_full.columns),
-        "selected features": ["all"],
-    })
+    kf = None
+    if use_kfold:
+        # Ensure each CV fold contains all classes (prevents invalid AUROC computation)
+        min_class_size = np.min(np.bincount(y))
+        n_splits = min(5, min_class_size)
 
-    # Classical Feature Selectors (Lasso, InfoGain, Gini, RFE)
-    print("\nRunning classical feature selectors...")
-
-    # use X_train_full/y_train_full for any selection:
-    for selector in classical_selectors:
-        start_time = time.time()
-        selected = []
-
-        if selector == "lasso":
-            model = LassoCV(cv=5, random_state=42).fit(X_train, y_train)
-            selected = list(X_train.columns[model.coef_ != 0])
-
-        elif selector == "information_gain":
-            scores = mutual_info_classif(X_train, y_train, random_state=42)
-            threshold = np.median(scores)
-            selected = list(X_train.columns[scores >= threshold])
-
-        elif selector == "gini":
-            rf = RandomForestClassifier(n_estimators=200, random_state=42)
-            rf.fit(X_train, y_train)
-            importances = rf.feature_importances_
-            threshold = np.median(importances)
-            selected = list(X_train.columns[np.array(importances) >= threshold])
-
-        elif selector == "rfe":
-            svc = SVC(kernel="linear", random_state=42)
-            rfe = RFE(svc, n_features_to_select=max(1, int(len(X_train.columns) * 0.5)))
-            rfe.fit(X_train, y_train)
-            selected = list(X_train.columns[rfe.support_])
-
-        if len(selected) == 0:
-            print(f"No features selected by {selector}; skipping.")
-            continue
-        
-        # then call run_model but supply the train/test split created earlier
-        # we'll write another run_model variant that accepts train/test splits
-
-        runtime = time.time() - start_time
-        acc = run_model_with_splits(X_train_full[selected], X_test_full[selected], y_train_full, y_test_full, description=f"({selector})")
-        # acc = run_model(X[selected], y, description=f"({selector})")
-
-        results.append({
-            "selector": selector,
-            "link_method": "none",
-            "threshold": None,
-            "community_method": "none",
-            "check_eigen": None,
-            "accuracy": acc,
-            "runtime(sec)": runtime,
-            "features nb": len(selected),
-            "selected features": selected,
-        })
-
-    # == GRID SEARCH ==
-    # Checking complex network feature selector with multiple parameters
-    print("\nRunning feature-selection models(gr)")
-    for link, th, cm, eigen in itertools.product(link_methods, thresholds, community_methods, eigen_options):
-        desc = f"({link}, thr={th}, {cm}, eigen={eigen})"
-        print(f"\nRunning {desc}")
-        start_time = time.time()
-
-        # reconstruct a small df with the same structure as your original file
-        # NOTE: you likely also need non-feature cols (glioma, patient_id) if generate_network expects them
-        train_df = X_train.copy()
-        # train_df['glioma'] = y_train  # if your generate_network drops non-feature columns, adjust
-        selected = select_community_centers(
-            train_df,
-            threshold=th,
-            mapping_file=f"mapping_{link}_{cm}.csv",
-            png_file=f"{dataset}_{link_method}_{threshold}_radiomic_graph.png",
-            method=cm,
-            check_eigen=eigen,
-            link_method=link,
+        kf = StratifiedKFold(
+            n_splits=n_splits,
+            shuffle=True,
+            random_state=42
         )
-        # png_file=f"graph_{link}_{cm}.png",
-        selected = [s for s in selected if s in X_train.columns]
+        print(f"Number of folds used: {n_splits}")
+        estimate_best_graph_params(model_data['X'])
+    else:
+        estimate_best_graph_params(model_data['X_train'])
 
-        # selected = select_community_centers(
-        #     radiomic_features_path,
-        #     threshold=th,
-        #     mapping_file=f"mapping_{link}_{cm}.csv",
-        #     png_file=f"graph_{link}_{cm}.png",
-        #     method=cm,
-        #     check_eigen=eigen,
-        #     link_method=link,
-        # )
+    # GFSIR selector from the source article
+    results.append(run_eval(model_data, gfsir_connected, "GFSIR Connected", kf=kf))
+    results.append(run_eval(model_data, gfsir_louvain, "GFSIR Louvain", kf=kf))
+    results.append(run_eval(model_data, gfsir_spectral, "GFSIR Spectral", kf=kf))
 
-        # Keep intersection of selected features
-        # selected = [f for f in selected if f in X.columns]
-        if len(selected) == 0:
-            print("No features selected; skipping.")
-            continue
+    # Classical Feature Selectors from literature
+    print("\nRunning classical feature selectors...")
+    results.append(run_eval(model_data,  None, "Vanilla RF", kf=kf))
+    results.append(run_eval(model_data, variance_selector, "Variance", kf=kf))
+    results.append(run_eval(model_data, anova_selector, "Anova", kf=kf))
+    results.append(run_eval(model_data, mi_selector, "Mutual Information", kf=kf))
+    results.append(run_eval(model_data, l1logistic_selector, "L1 Logistic Regression", kf=kf))
+    results.append(run_eval(model_data, rfe_selector, "RFE (SVM)", kf=kf))
+    results.append(run_eval(model_data, boruta_selector, "Boruta", kf=kf))
 
-        runtime = time.time() - start_time
-        # acc = run_model(X[selected], y, description=desc)
-        acc = run_model_with_splits(X_train_full[selected], X_test_full[selected], y_train_full, y_test_full, description=f"({selector})")
+    # Checking complex network feature selector with multiple parameters
+    for link, th, cn, in itertools.product(link_methods, thresholds, cn_selectors):
 
-        results.append({
-            "selector": "complex network",
-            "link_method": link,
+        params = {
+            "dataset": dataset,
             "threshold": th,
-            "community_method": cm,
-            "check_eigen": eigen,
-            "accuracy": acc,
-            "runtime(sec)": runtime,
-            "features nb": len(selected),
-            "selected features": selected,
-        })
+            "cn_selector": cn,
+            "link": link,
+        }
 
-    print("\n==============================")
-    print("FINAL BENCHMARK SUMMARY")
-    print("==============================")
+        results.append(run_eval(model_data, graph_selector, "Complex Network", selector_params=params, kf=kf))
+
+    print("\n==============================\nFINAL BENCHMARK SUMMARY\n==============================")
     summary = pd.DataFrame(results)
-    print(summary.sort_values(by="accuracy", ascending=False).reset_index(drop=True))
+    print(summary.sort_values(by="accuracy_mean", ascending=False).reset_index(drop=True))
 
     elapsed = time.time() - total_time_start
     hours = int(elapsed // 3600)
     minutes = int((elapsed % 3600) // 60)
     seconds = int(elapsed % 60)
     print(f"Total runtime: {hours}h {minutes}m {seconds}s")
+    if use_kfold:
+        print(f"Total samples: {model_data['X'].shape[0]}")
+    else:
+        print(f"Total samples: {model_data['X_train'].shape[0]}")
+    
+    if kf is not None:
+        print(f"CV strategy: {kf.get_n_splits()}-fold StratifiedKFold")
 
     # Saving results
-    summary.to_csv(f"{dataset}_benchmark_results.csv", index=False)
-    print("\nResults saved to benchmark_results.csv")
+    summary.to_csv(f"outputs/{dataset}/{dataset}_benchmark_results.csv", index=False)
+    print(f"\nResults saved to {dataset}_benchmark_results.csv")
+    plots.print_cn_performance_summary(summary, metric="balanced_accuracy")
 
+    df_plot = summary[
+        (summary["selector"] == "Complex Network") &
+        (summary["threshold"].notna())
+    ].copy()
 
-# import pandas as pd
-# import time
-# import itertools
-# from sklearn.model_selection import train_test_split
-# from sklearn.preprocessing import LabelEncoder, StandardScaler
-# from sklearn.ensemble import RandomForestClassifier
-# from sklearn.metrics import classification_report, accuracy_score
-# from pipeline.feature_selector import select_community_centers
-# import json
-# import numpy as np
-# from sklearn.linear_model import LassoCV
-# from sklearn.feature_selection import mutual_info_classif, RFE
-# from sklearn.svm import SVC
-
-# # Loading the config json
-# with open('input/config.json', 'r') as file:
-#     config = json.load(file)
-
-# import networkx as nx
-# import matplotlib.pyplot as plt
-
-
-# def analyze_and_prepare_features(csv_path, save_clean=True, plot_corr_graph=False, corr_threshold=0.0):
-#     """
-#     Analyze and prepare radiomic features before model benchmarking.
-
-#     Parameters
-#     ----------
-#     csv_path : str
-#         Path to the radiomic features CSV file.
-#     save_clean : bool
-#         Whether to save the cleaned and normalized CSV file.
-#     plot_corr_graph : bool
-#         Whether to plot a feature correlation network.
-#     corr_threshold : float
-#         Minimum correlation threshold to define edges in the correlation graph.
-
-#     Returns
-#     -------
-#     df_clean : pd.DataFrame
-#         Cleaned and normalized DataFrame ready for model training.
-#     """
-
-#     df = pd.read_csv(csv_path)
-
-#     print(f"\n--- DATA OVERVIEW ---")
-#     print(f"Shape: {df.shape[0]} rows × {df.shape[1]} columns")
-
-#     # === Check for nulls ===
-#     null_counts = df.isnull().sum()
-#     if null_counts.any():
-#         print("\nMissing values detected:")
-#         print(null_counts[null_counts > 0])
-#         df = df.dropna()
-#         print(f"Dropped rows with nulls. New shape: {df.shape}")
-#     else:
-#         print("\nNo missing values detected.")
-
-#     # === Drop non-numeric columns (if any) ===
-#     non_numeric_cols = df.select_dtypes(exclude=[np.number]).columns.tolist()
-#     if non_numeric_cols:
-#         print(f"\nDropping non-numeric columns: {non_numeric_cols}")
-#         df = df.drop(columns=non_numeric_cols)
-
-#     # === Detect constant columns ===
-#     constant_cols = [col for col in df.columns if df[col].nunique() <= 1]
-#     if constant_cols:
-#         print(f"\nConstant columns detected: {constant_cols}")
-#         df = df.drop(columns=constant_cols)
-#         print(f"Dropped {len(constant_cols)} constant columns.")
-#     else:
-#         print("\nNo constant columns detected.")
-
-#     # === Check if already normalized ===
-#     means = df.mean()
-#     stds = df.std()
-#     if np.allclose(means, 0, atol=0.1) and np.allclose(stds, 1, atol=0.1):
-#         print("\nData appears to be already normalized (mean≈0, std≈1).")
-#         df_clean = df.copy()
-#     else:
-#         print("\nApplying z-score normalization...")
-#         scaler = StandardScaler()
-#         df_clean = pd.DataFrame(
-#             scaler.fit_transform(df),
-#             columns=df.columns,
-#             index=df.index
-#         )
-#         print("Normalization complete.")
-
-#     # === Optional: correlation graph check ===
-#     if plot_corr_graph:
-#         print("\nBuilding correlation network...")
-#         corr = df_clean.corr()
-#         G = nx.Graph()
-#         for col in corr.columns:
-#             G.add_node(col)
-#         for i in range(len(corr.columns)):
-#             for j in range(i + 1, len(corr.columns)):
-#                 if abs(corr.iloc[i, j]) >= corr_threshold:
-#                     G.add_edge(corr.columns[i], corr.columns[j])
-#         n_components = nx.number_connected_components(G)
-#         print(f"Correlation graph has {n_components} connected component(s).")
-#         if n_components > 1:
-#             print("The feature graph is not fully connected — "
-#                   "some features are weakly correlated.")
-#         plt.figure(figsize=(10, 8))
-#         nx.draw(G, with_labels=True, node_size=600, font_size=8,
-#                 node_color='skyblue', edge_color='gray')
-#         plt.title("Radiomic Feature Correlation Graph")
-#         plt.show()
-
-#     # === Save cleaned data ===
-#     if save_clean:
-#         clean_path = csv_path.replace(".csv", "_cleaned.csv")
-#         df_clean.to_csv(clean_path, index=False)
-#         print(f"\nCleaned and normalized file saved to: {clean_path}")
-
-#     print("\nFeature analysis and preparation complete.\n")
-#     return df_clean
-
-
-# def run_model(X, y, description=""):
-#     """Train and evaluate a Random Forest model."""
-#     le = LabelEncoder()
-#     y_encoded = le.fit_transform(y.astype(str))
-
-#     X_train, X_test, y_train, y_test = train_test_split(
-#         X, y_encoded, test_size=0.2, random_state=42, stratify=y_encoded
-#     )
-
-#     scaler = StandardScaler()
-#     X_train = scaler.fit_transform(X_train)
-#     X_test = scaler.transform(X_test)
-
-#     model = RandomForestClassifier(n_estimators=200, random_state=42)
-#     model.fit(X_train, y_train)
-
-#     y_pred = model.predict(X_test)
-#     acc = accuracy_score(y_test, y_pred)
-
-#     print(f"\n=== Results {description} ===")
-#     print(f"Accuracy: {acc:.4f}")
-#     return acc
-
-
-# def model_benchmarking(dataset="brats_africa"):
-
-#     # Parameter grids
-#     # thresholds = [0.0, 0.15, 0.3, 0.45, 0.6, 0.7, 0.8]
-#     thresholds = [0.0, 0.15, 0.3, 0.45, 0.7]
-#     link_methods = ["cosine", "spearman", "pearson", "rho_distance"]
-#     community_methods = ["lp", "pr"]
-#     eigen_options = [False, True]
-#     classical_selectors = ["lasso", "information_gain", "gini"]
-
-#     # rfe takes forever
-#     # thresholds = [0.0, 0.3]
-#     # link_methods = ["pearson"]
-#     # community_methods = ["lp", "pr"]
-#     # eigen_options = [False]
-#     # classical_selectors = ["lasso", "information_gain", "gini"]
-
-#     radiomic_features_path = f"{config[dataset]['output_path']}{dataset}_radiomic_features.csv"
-
-#     # This is a module that provides insights, but it is not used as the input for the model
-#     # check_df = analyze_and_prepare_features(
-#     #     radiomic_features_path,
-#     #     save_clean=True,
-#     #     plot_corr_graph=True
-#     # )
-
-#     df = pd.read_csv(radiomic_features_path)
-#     total_time_start = time.time()
-
-#     # Drop columns not related to the features
-#     X = df.drop(columns=["glioma", "exam_path", "gt_path", "patient_id"])
-#     y = df["glioma"] # Target definition
-
-#     # Store results
-#     results = []
-
-#     # Control model
-#     print("\nRunning control model (all features)")
-#     # t0 = time.time()
-#     acc_all = run_model(X, y, description="(All features)")
-#     # control_time = time.time() - t0
-#     results.append({
-#         "selector": "none",
-#         "link_method": "none",
-#         "threshold": None,
-#         "community_method": "none",
-#         "check_eigen": None,
-#         "accuracy": acc_all,
-#         "runtime(sec)": "none",
-#         "features nb": len(X.columns),
-#         "selected features": ["all"],
-#     })
-
-#     # Classical Feature Selectors (Lasso, InfoGain, Gini, RFE)
-#     print("\nRunning classical feature selectors...")
-
-#     for selector in classical_selectors:
-#         print(f"\n--- Running {selector} selector ---")
-#         start_time = time.time()
-
-#         selected = []
-#         try:
-#             if selector == "lasso":
-#                 model = LassoCV(cv=5, random_state=42).fit(X, y)
-#                 selected = X.columns[model.coef_ != 0]
-
-#             elif selector == "information_gain":
-#                 scores = mutual_info_classif(X, y, random_state=42)
-#                 threshold = np.median(scores)  # keep top 50%
-#                 selected = X.columns[scores >= threshold]
-
-#             elif selector == "gini":
-#                 rf = RandomForestClassifier(n_estimators=200, random_state=42)
-#                 rf.fit(X, y)
-#                 importances = rf.feature_importances_
-#                 threshold = np.median(importances)
-#                 selected = X.columns[importances >= threshold]
-
-#             elif selector == "rfe":
-#                 svc = SVC(kernel="linear", random_state=42)
-#                 rfe = RFE(svc, n_features_to_select=int(len(X.columns) * 0.5))
-#                 rfe.fit(X, y)
-#                 selected = X.columns[rfe.support_]
-
-#             if len(selected) == 0:
-#                 print(f"No features selected by {selector}; skipping.")
-#                 continue
-
-#             runtime = time.time() - start_time
-#             acc = run_model(X[selected], y, description=f"({selector})")
-
-#             results.append({
-#                 "selector": selector,
-#                 "link_method": "none",
-#                 "threshold": None,
-#                 "community_method": "none",
-#                 "check_eigen": None,
-#                 "accuracy": acc,
-#                 "runtime(sec)": runtime,
-#                 "features nb": len(selected),
-#                 "selected features": selected,
-#             })
-#         except Exception as e:
-#             print(f"Error with {selector}: {e}")
-#             continue
-
-#     # == GRID SEARCH ==
-#     # Checking complex network feature selector with multiple parameters
-#     print("\nRunning feature-selection models(gr)")
-#     for link, th, cm, eigen in itertools.product(link_methods, thresholds, community_methods, eigen_options):
-#         desc = f"({link}, thr={th}, {cm}, eigen={eigen})"
-#         print(f"\nRunning {desc}")
-#         start_time = time.time()
-
-#         selected = select_community_centers(
-#             radiomic_features_path,
-#             threshold=th,
-#             mapping_file=f"mapping_{link}_{cm}.csv",
-#             png_file=f"graph_{link}_{cm}.png",
-#             method=cm,
-#             check_eigen=eigen,
-#             link_method=link,
-#         )
-
-#         # Keep intersection of selected features
-#         selected = [f for f in selected if f in X.columns]
-#         if len(selected) == 0:
-#             print("No features selected; skipping.")
-#             continue
-
-#         runtime = time.time() - start_time
-#         acc = run_model(X[selected], y, description=desc)
-
-#         results.append({
-#             "selector": "complex network",
-#             "link_method": link,
-#             "threshold": th,
-#             "community_method": cm,
-#             "check_eigen": eigen,
-#             "accuracy": acc,
-#             "runtime(sec)": runtime,
-#             "features nb": len(selected),
-#             "selected features": selected,
-#         })
-
-#     print("\n==============================")
-#     print("FINAL BENCHMARK SUMMARY")
-#     print("==============================")
-#     summary = pd.DataFrame(results)
-#     print(summary.sort_values(by="accuracy", ascending=False).reset_index(drop=True))
-
-#     elapsed = time.time() - total_time_start
-#     hours = int(elapsed // 3600)
-#     minutes = int((elapsed % 3600) // 60)
-#     seconds = int(elapsed % 60)
-#     print(f"Total runtime: {hours}h {minutes}m {seconds}s")
-
-#     # Saving results
-#     summary.to_csv(f"{dataset}_benchmark_results.csv", index=False)
-#     print("\nResults saved to benchmark_results.csv")
+    if len(df_plot) > 0:
+        plots.accuracy_vs_runtime_by_threshold(summary, dataset)
+        plots.accuracy_vs_runtime_by_link_method(summary, dataset)
+        plots.accuracy_vs_runtime_by_cn_selector(summary, dataset)
+        plots.accuracy_vs_features_by_threshold(summary, dataset)
+        plots.accuracy_vs_features_by_link_method(summary, dataset)
+        plots.accuracy_vs_features_by_cn_selector(summary, dataset)
+        plots.performance_boxplot(summary, dataset, metric="balanced_accuracy")

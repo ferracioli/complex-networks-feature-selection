@@ -4,5 +4,8 @@ networkx
 matplotlib
 scikit-learn
 SimpleITK
+matplotlib
 pyradiomics
 nibabel
+python-louvain
+boruta

@@ -8,6 +8,91 @@ from radiomics import featureextractor
 with open('input/config.json', 'r') as file:
     config = json.load(file)
 
+# Remotion_list is a variable used to continue the mapping if it gets interrupted
+def generate_exam_dataframe(max_items=None, remotion_list=[], dataset="brats_africa"):
+    glioma_path = config[dataset]["glioma_path"]
+    others_path = config[dataset]["others_path"]
+    clinical_csv = config[dataset]["clinical_csv"]
+    output_csv = f"{config[dataset]['output_path']}{dataset}_paths.csv"
+
+    # Loading the clinical CSV
+    clinical_df = pd.read_csv(clinical_csv, sep=",")
+    print(clinical_df.columns)
+    # Mapping the IDs according to the column name
+    if "ID" in clinical_df.columns:
+        id_col = "ID"
+    else:
+        id_col = clinical_df.columns[0]
+
+    # Start mapping the paths from the dataset
+    exam_list = []
+
+    # Glioma images
+    if os.path.exists(glioma_path):
+        exam_folders = os.listdir(glioma_path)
+
+        for exam in exam_folders:
+            if max_items and len(exam_list) >= max_items:
+                break
+
+            if exam in remotion_list:
+                print(f"{exam} already verified...")
+                continue
+
+            # Original exam
+            exam_file = os.path.join(glioma_path, exam, f"{exam}-t2f.nii.gz")
+            if not os.path.isfile(exam_file):
+                continue
+
+            # Manual segmentation(ground truth)
+            gt_file = os.path.join(glioma_path, exam, f"{exam}-seg.nii.gz")
+
+            exam_list.append({
+                "exam_id": exam,
+                "exam_path": exam_file,
+                "gt_path": gt_file
+            })
+
+    # Non Glioma images
+    if os.path.exists(others_path):
+        exam_folders = os.listdir(others_path)
+        print(exam_folders)
+
+        for exam in exam_folders:
+            if max_items and len(exam_list) >= max_items:
+                break
+
+            if exam in remotion_list:
+                print(f"{exam} already verified...")
+                continue
+
+            # Original exam
+            exam_file = os.path.join(others_path, exam, f"{exam}-t2f.nii.gz")
+            if not os.path.isfile(exam_file):
+                continue
+
+            # Manual segmentation(ground truth)
+            gt_file = os.path.join(others_path, exam, f"{exam}-seg.nii.gz")
+
+            exam_list.append({
+                "exam_id": exam,
+                "exam_path": exam_file,
+                "gt_path": gt_file
+            })
+
+    # Converting the list to a Pandas dataframe
+    exams_df = pd.DataFrame(exam_list)
+
+    # Inner join between the paths and clinical informations
+    merged_df = clinical_df.merge(exams_df, left_on=id_col, right_on="exam_id", how="inner")
+
+    # Storing the dataframe
+    merged_df.to_csv(output_csv, index=False)
+
+    print(f"Dataframe stored as: {output_csv}, size: {merged_df.shape}")
+    return merged_df
+
+
 def extract_radiomic_features(
     bin_width=40,
     normalize=False,
@@ -21,12 +106,11 @@ def extract_radiomic_features(
     and saves results to "outputs/brats_africa/radiomic_features_brats_africa.csv".
     
     Args:
-        input_csv (str, optional): Path to CSV with columns 'exam_path', 'gt_path', 'glioma', 'ID'.
-        output_csv (str, optional): Path to save extracted features CSV.
         bin_width (int): Bin width for intensity discretization.
         normalize (bool): Whether to normalize images before extraction.
         min_roi_size (int): Minimum ROI size.
         min_roi_dim (int): Minimum ROI dimension (2D or 3D).
+        dataset (str): selected dataset to identify in the json config
         
     Returns:
         pd.DataFrame: Extracted radiomic features.
@@ -61,7 +145,9 @@ def extract_radiomic_features(
     # Feature extraction
     all_features = []
 
+    # For each exam
     for idx, row in df.iterrows():
+        # Identify the paths to the exam and ground truth
         img_path = row["exam_path"]
         mask_path = row["gt_path"]
         glioma_target = row["glioma"]
@@ -72,6 +158,7 @@ def extract_radiomic_features(
             continue
 
         try:
+            # Reading images
             image = sitk.ReadImage(img_path)
             mask = sitk.ReadImage(mask_path)
 

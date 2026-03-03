@@ -1,209 +1,252 @@
-import pandas as pd
+import community as community_louvain
+import json
+import matplotlib.pyplot as plt
 import networkx as nx
-from pipeline.build_network import generate_network
 import numpy as np
+import pandas as pd
+from sklearn.feature_selection import VarianceThreshold
+from sklearn.metrics.pairwise import cosine_similarity
+from scipy.stats import spearmanr
 
-def select_community_centers(
+# # Loading the config json
+with open('input/config.json', 'r') as file:
+    config = json.load(file)
+
+def generate_network(
     df,
     threshold=0.7,
-    mapping_file="feature_mapping.csv",
-    png_file="radiomic_graph.png",
-    method="lp",  # "lp" (Label Propagation) as default
-    check_eigen=False,  # If True, use eigenvector centrality to refine selection
-    dataset="brats_africa",
-    link_method="spearman",
+    link_method="cosine",
 ):
     """
-    Detect feature communities in a prebuilt network and return center features.
+    Function that generates a complex network based on the input dataframe and link method
+    
+    Args:
+        df (radiomic DataFrame):
+        threshold (float): Correlation threshold for edge creation.
+        link_method (str): method used for link generating in the network
+        
+    Returns:
+        nx.Graph: The generated network in networkX format
+    """
+
+    # Keep non-feature columns to add back later
+    non_feature_cols = ["glioma", "exam_path", "gt_path", "patient_id"]
+    non_feature_cols = [c for c in non_feature_cols if c in df.columns]
+
+    # Feature-only dataframe
+    features_df = df.drop(columns=non_feature_cols, errors="ignore")
+
+    # Drop features with very low variance(raise the value encountered in divide c /= stddev[None, :])
+    # Keeping then results in a disjointed network
+    low_var_thresh = 1e-6
+    variances = features_df.var(axis=0)
+    low_var_cols = variances[variances < low_var_thresh].index.tolist()
+    if low_var_cols:
+        print(f"Dropping {len(low_var_cols)} near-constant features.")
+        features_df = features_df.drop(columns=low_var_cols)
+
+    # Transpose so rows = features, cols = patients
+    feature_vectors = features_df.T.values
+    feature_names = features_df.columns.tolist()
+
+    # Normalize features (important for cosine / Euclidean)
+    feature_vectors = (feature_vectors - feature_vectors.mean(axis=1, keepdims=True)) / \
+                      (feature_vectors.std(axis=1, keepdims=True) + 1e-8)
+
+    # Compute similarity
+    if link_method == "Cosine":
+        similarity_matrix = cosine_similarity(feature_vectors)
+
+    elif link_method == "Spearman":
+        corr, _ = spearmanr(feature_vectors, axis=1)
+        similarity_matrix = np.abs(np.triu(corr, 0))
+
+    elif link_method == "Pearson":
+        corr = np.corrcoef(feature_vectors)
+        similarity_matrix = np.abs(corr)
+
+    elif link_method == "Rho distance":
+        corr = np.corrcoef(feature_vectors)
+        corr = np.nan_to_num(corr, nan=0.0)
+        d = np.sqrt(2 * (1 - corr))  # distance in [0, 2]
+        # Convert to similarity in [0, 1]
+        similarity_matrix = 1 - (d / np.max(d))
+
+    else:
+        raise ValueError(f"Invalid link_method: {link_method}")
+
+    # Build graph
+    G = nx.Graph()
+    for feat in feature_names:
+        G.add_node(feat)
+
+    # Trying to optimize runtime with numpy by attributing only links higher than the thresh:
+    idx_i, idx_j = np.where(np.triu(similarity_matrix, k=1) > threshold)
+
+    edges = [
+        (feature_names[i], feature_names[j], float(similarity_matrix[i, j]))
+        for i, j in zip(idx_i, idx_j)
+    ]
+    G.add_weighted_edges_from(edges)
+
+    # Add back non-feature columns
+    features_df[non_feature_cols] = df[non_feature_cols]
+
+    return G, features_df
+
+def select_cn_centers(
+    df,
+    threshold=0.7,
+    png_path="radiomic_graph.png",
+    cn_selector="Label Propagation", 
+    link_method="Spearman",
+    seed_nb=42,
+    save_fig=False,
+):
+    """
+    Detect feature communities in a prebuilt network and return nodes according to the selected method.
 
     Args:
-        df (DataFrame):
+        df (radiomic DataFrame):
         threshold (float): Correlation threshold for edge creation.
-        mapping_file (str): Mapping file for feature names.
-        png_file (str): Output graph visualization path.
-        method (str): Community detection/selection method ("lp" or "pr").
-        check_eigen (bool): Whether to use eigenvector centrality for refinement.
+        png_path (str): Output graph visualization path.
+        cn_selector (str): Community detection/selection method ("Label Propagation", "Louvain", "Betweeness" or "Page Rank").
+        link_method (str): method used for link generating in the network
 
     Returns:
         centers (list): Selected feature names (community centers).
     """
-    # [NEW] changed from the csv path to the dataframe
     # Build or load network
-    G, _ = generate_network(df=df, threshold=threshold, 
-                         mapping_file=mapping_file, link_method=link_method,
-                         dataset=dataset)
+    vt = VarianceThreshold(threshold=0.001)
+    df_reduced = vt.fit_transform(df)
+    selected_cols = df.columns[vt.get_support()]
+    df = pd.DataFrame(df_reduced, columns=selected_cols)
 
-    print("Initial number of features:", G.number_of_nodes())
+    G, _ = generate_network(df=df, threshold=threshold, link_method=link_method)
+    if G.number_of_nodes() == 0:
+        return []
 
-    # Detecting communities
-    if method == "lp":
-        communities = list(nx.algorithms.community.label_propagation_communities(G))
-    elif method == "pr":
-        # PageRank can be used globally; we can group nodes afterward by high correlation
-        pr_scores = nx.pagerank(G)
-        # Create artificial "communities" by thresholding PR values into quantiles
-        quantiles = np.percentile(list(pr_scores.values()), [25, 50, 75])
-        # Currently, page rank is always selecting 4 features
-        communities = [set() for _ in range(4)]
-        for node, score in pr_scores.items():
-            if score <= quantiles[0]:
-                communities[0].add(node)
-            elif score <= quantiles[1]:
-                communities[1].add(node)
-            elif score <= quantiles[2]:
-                communities[2].add(node)
-            else:
-                communities[3].add(node)
+    if cn_selector == "Label Propagation":
+
+        communities = list(nx.algorithms.community.asyn_lpa_communities(G, seed=seed_nb))
+
+        centers = []
+
+        # --- Select one representative per community ---
+        for comm in communities:
+            # Single-node community → keep it
+            if len(comm) < 2:
+                centers.extend(comm)
+                continue
+
+            # Induced subgraph for the community
+            sub = G.subgraph(comm)
+
+            # Degree centrality (linear-time, local)
+            degrees = dict(sub.degree())
+
+            # Select most connected node inside the community
+            center = max(degrees, key=degrees.get)
+            centers.append(center)
+
+    elif cn_selector == "Louvain":
+        # Detect communities with Louvain
+        partition = community_louvain.best_partition(G, random_state=seed_nb)
+
+        # Organize nodes by community
+        communities = {}
+        for node, comm_id in partition.items():
+            communities.setdefault(comm_id, []).append(node)
+
+        centers = []
+
+        # --- Select one representative per community ---
+        for comm in communities.values():
+            # Single-node community → keep it
+            if len(comm) < 2:
+                centers.extend(comm)
+                continue
+
+            # Induced subgraph for the community
+            sub = G.subgraph(comm)
+
+            # Degree centrality (linear-time, local)
+            degrees = dict(sub.degree())
+
+            # Select most connected node inside the community
+            center = max(degrees, key=degrees.get)
+            centers.append(center)
+
+    elif cn_selector == "Page Rank":
+        pr = nx.pagerank(G)
+        thr = np.percentile(list(pr.values()), 75)
+        centers = [n for n, v in pr.items() if v >= thr]
+
+    elif cn_selector == "Betweenness":
+        btw = nx.betweenness_centrality(G)
+        vals = np.array(list(btw.values()))
+        z = (vals - vals.mean()) / vals.std()
+        centers = [n for n, score in zip(G.nodes(), z) if score > 1.0]
+
+    elif cn_selector == "Bridging Centrality":
+        btw = nx.betweenness_centrality(G)
+        deg = dict(G.degree())
+
+        bridging = {}
+        for node in G.nodes():
+            neighbors = list(G.neighbors(node))
+            if len(neighbors) == 0 or deg[node] == 0:
+                bridging[node] = 0
+                continue
+
+            inv_deg_sum = sum(1 / deg[n] for n in neighbors if deg[n] > 0)
+            coeff = (1 / deg[node]) * inv_deg_sum
+            bridging[node] = btw[node] * coeff
+
+        thr = np.percentile(list(bridging.values()), 75)
+        centers = [n for n, v in bridging.items() if v >= thr]
+
+    elif cn_selector == "Structural Diversity":
+        # Calculating PageRank as a global centrality
+        pr = nx.pagerank(G)
+
+        # Sorting by most relevant nodes
+        nodes_sorted = sorted(pr, key=pr.get, reverse=True)
+
+        centers = []
+        excluded = set()
+        k = max(1, int(len(G) * 0.1)) 
+        # Selects =~ the top 10% most diverse nodes
+
+        for node in nodes_sorted:
+            if node in excluded:
+                continue
+            centers.append(node)
+            # Avoiding neigbors
+            excluded.update(G.neighbors(node))
+            excluded.add(node)
+            if len(centers) >= k:
+                break
+
     else:
-        raise ValueError("Invalid method. Choose 'lp' for Label Propagation or 'pr' for PageRank.")
+        raise ValueError("Error: invalid method.")
 
-    centers = []
-    for community in communities:
-        if len(community) == 0:
-            continue
-        subgraph = G.subgraph(community)
+    if save_fig:
+        plt.figure(figsize=(12, 10))
+        pos = nx.spring_layout(G, seed=seed_nb)
 
-        # Optional eigenvalue-based refinement
-        if check_eigen:
-            try:
-                eig_centrality = nx.eigenvector_centrality(subgraph, max_iter=1000)
-                center = max(eig_centrality, key=eig_centrality.get)
-            except nx.PowerIterationFailedConvergence:
-                print("Eigenvector centrality failed to converge; falling back to degree centrality.")
-                center = max(subgraph.degree, key=lambda x: x[1])[0]
-        else:
-            # Default center selection method
-            if method == "pr":
-                pr_sub = nx.pagerank(subgraph)
-                center = max(pr_sub, key=pr_sub.get)
-            else:
-                center = max(subgraph.degree, key=lambda x: x[1])[0]
+        node_colors = ["red" if n in centers else "skyblue" for n in G.nodes()]
+        nx.draw_networkx_nodes(G, pos, node_color=node_colors, node_size=700)
+        nx.draw_networkx_edges(G, pos, alpha=0.6)
 
-        centers.append(center)
+        # Only label selected (red) nodes
+        red_labels = {n: n for n in centers if n in G.nodes()}
+        nx.draw_networkx_labels(G, pos, labels=red_labels, font_size=8)
 
-    # [NEW] Storing the network png presenting the selected nodes in red
-    # Visualize graph with centers highlighted
-    plt.figure(figsize=(12, 10))
-    pos = nx.spring_layout(G, seed=42)
+        plt.title(f"Radiomic Graph / Method: {cn_selector}", fontsize=14)
+        plt.axis("off")
+        plt.tight_layout()
+        plt.savefig(png_path, dpi=300)
+        plt.close()
 
-    # Mark all nodes, color red if center
-    node_colors = ["red" if node in centers else "skyblue" for node in G.nodes()]
-    nx.draw_networkx_nodes(G, pos, node_color=node_colors, node_size=800, alpha=0.9)
-    nx.draw_networkx_edges(G, pos, width=1, alpha=0.6)
-    nx.draw_networkx_labels(G, pos, font_size=8)
-    plt.axis("off")
-    plt.title(f"Radiomic Graph (Centers in Red)", fontsize=14)
-    plt.tight_layout()
-
-    png_path = f"outputs/{dataset}/{png_file}"
-    plt.savefig(png_path, dpi=300)
-    plt.close()
-
-
-    print("Selected features:", centers)
     return centers
-
-
-# import pandas as pd
-# import networkx as nx
-# from pipeline.build_network import generate_network
-# import numpy as np
-
-# def select_community_centers(
-#     csv_path,
-#     threshold=0.7,
-#     mapping_file="feature_mapping.csv",
-#     png_file="radiomic_graph.png",
-#     method="lp",  # "lp" (Label Propagation) as default
-#     check_eigen=False,  # If True, use eigenvector centrality to refine selection
-#     dataset="brats_africa",
-#     link_method="spearman",
-# ):
-#     """
-#     Detect feature communities in a prebuilt network and return center features.
-
-#     Args:
-#         csv_path (str): Path to feature CSV.
-#         threshold (float): Correlation threshold for edge creation.
-#         mapping_file (str): Mapping file for feature names.
-#         png_file (str): Output graph visualization path.
-#         method (str): Community detection/selection method ("lp" or "pr").
-#         check_eigen (bool): Whether to use eigenvector centrality for refinement.
-
-#     Returns:
-#         centers (list): Selected feature names (community centers).
-#     """
-#     # Build or load network
-#     G, _ = generate_network(csv_path=csv_path, threshold=threshold, 
-#                          mapping_file=mapping_file, link_method=link_method,
-#                          dataset=dataset)
-
-#     print("Initial number of features:", G.number_of_nodes())
-
-#     # Detecting communities
-#     if method == "lp":
-#         communities = list(nx.algorithms.community.label_propagation_communities(G))
-#     elif method == "pr":
-#         # PageRank can be used globally; we can group nodes afterward by high correlation
-#         pr_scores = nx.pagerank(G)
-#         # Create artificial "communities" by thresholding PR values into quantiles
-#         quantiles = np.percentile(list(pr_scores.values()), [25, 50, 75])
-#         # Currently, page rank is always selecting 4 features
-#         communities = [set() for _ in range(4)]
-#         for node, score in pr_scores.items():
-#             if score <= quantiles[0]:
-#                 communities[0].add(node)
-#             elif score <= quantiles[1]:
-#                 communities[1].add(node)
-#             elif score <= quantiles[2]:
-#                 communities[2].add(node)
-#             else:
-#                 communities[3].add(node)
-#     else:
-#         raise ValueError("Invalid method. Choose 'lp' for Label Propagation or 'pr' for PageRank.")
-
-#     centers = []
-#     for community in communities:
-#         if len(community) == 0:
-#             continue
-#         subgraph = G.subgraph(community)
-
-#         # Optional eigenvalue-based refinement
-#         if check_eigen:
-#             try:
-#                 eig_centrality = nx.eigenvector_centrality(subgraph, max_iter=1000)
-#                 center = max(eig_centrality, key=eig_centrality.get)
-#             except nx.PowerIterationFailedConvergence:
-#                 print("Eigenvector centrality failed to converge; falling back to degree centrality.")
-#                 center = max(subgraph.degree, key=lambda x: x[1])[0]
-#         else:
-#             # Default center selection method
-#             if method == "pr":
-#                 pr_sub = nx.pagerank(subgraph)
-#                 center = max(pr_sub, key=pr_sub.get)
-#             else:
-#                 center = max(subgraph.degree, key=lambda x: x[1])[0]
-
-#         centers.append(center)
-
-#     # [NEW] Storing the network png presenting the selected nodes in red
-#     # Visualize graph with centers highlighted
-#     plt.figure(figsize=(12, 10))
-#     pos = nx.spring_layout(G, seed=42)
-
-#     # Mark all nodes, color red if center
-#     node_colors = ["red" if node in centers else "skyblue" for node in G.nodes()]
-#     nx.draw_networkx_nodes(G, pos, node_color=node_colors, node_size=800, alpha=0.9)
-#     nx.draw_networkx_edges(G, pos, width=1, alpha=0.6)
-#     nx.draw_networkx_labels(G, pos, font_size=8)
-#     plt.axis("off")
-#     plt.title(f"Radiomic Graph (Centers in Red)", fontsize=14)
-#     plt.tight_layout()
-
-#     png_path = f"outputs/{dataset}/{png_file}"
-#     plt.savefig(png_path, dpi=300)
-#     plt.close()
-
-
-#     print("Selected features:", centers)
-#     return centers
