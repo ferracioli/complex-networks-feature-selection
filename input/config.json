@@ -9,7 +9,11 @@
         "grid_params": {
             "thresholds": [0.0, 0.15, 0.3, 0.5, 0.55, 0.6, 0.65, 0.7],
             "link_methods": ["Cosine", "Spearman", "Pearson", "Rho distance"],
-            "cn_selectors": ["Label Propagation", "Bridging Centrality", "Louvain", "Structural Diversity"]
+            "cn_selectors": ["Label Propagation", "Bridging Centrality", "Louvain", "Structural Diversity"],
+            "gfsir_nfeatures": [10, 20, 30],
+            "gfsir_minth": ["auto", 0.0, 0.3, 0.7],
+            "gfsir_maxth": [1.0],
+            "gfsir_selector": ["Graph-ConnectedComponents", "Graph-Louvain", "Graph-SpectralClustering"]
         }
     },
     "nsclc": {
@@ -19,7 +23,11 @@
         "grid_params": {
             "thresholds": [0.0, 0.15, 0.3, 0.6, 0.65, 0.7, 0.75, 0.8],
             "link_methods": ["Cosine", "Spearman", "Pearson", "Rho distance"],
-            "cn_selectors": ["Label Propagation", "Bridging Centrality", "Louvain", "Structural Diversity"]
+            "cn_selectors": ["Label Propagation", "Bridging Centrality", "Louvain", "Structural Diversity"],
+            "gfsir_nfeatures": [10, 20, 30],
+            "gfsir_minth": ["auto", 0.0, 0.3, 0.7],
+            "gfsir_maxth": [1.0],
+            "gfsir_selector": ["Graph-ConnectedComponents", "Graph-Louvain", "Graph-SpectralClustering"]
         }
     },
     "nsclc_drop_rare_classes": {
@@ -29,7 +37,11 @@
         "grid_params": {
             "thresholds": [0.0, 0.15, 0.3, 0.6, 0.65, 0.7, 0.75, 0.8],
             "link_methods": ["Cosine", "Spearman", "Pearson", "Rho distance"],
-            "cn_selectors": ["Label Propagation", "Bridging Centrality", "Louvain", "Structural Diversity"]
+            "cn_selectors": ["Label Propagation", "Bridging Centrality", "Louvain", "Structural Diversity"],
+            "gfsir_nfeatures": [10, 20, 30],
+            "gfsir_minth": ["auto", 0.0, 0.3, 0.7],
+            "gfsir_maxth": [1.0],
+            "gfsir_selector": ["Graph-ConnectedComponents", "Graph-Louvain", "Graph-SpectralClustering"]
         }
     },
     "radiomics_lgg": {
@@ -40,7 +52,11 @@
         "grid_params": {
             "thresholds": [0.0, 0.15, 0.3, 0.5, 0.55, 0.6, 0.65, 0.7],
             "link_methods": ["Cosine", "Spearman", "Pearson", "Rho distance"],
-            "cn_selectors": ["Label Propagation", "Bridging Centrality", "Louvain", "Structural Diversity"]
+            "cn_selectors": ["Label Propagation", "Bridging Centrality", "Louvain", "Structural Diversity"],
+            "gfsir_nfeatures": [10, 20, 30],
+            "gfsir_minth": ["auto", 0.0, 0.3, 0.7],
+            "gfsir_maxth": [1.0],
+            "gfsir_selector": ["Graph-ConnectedComponents", "Graph-Louvain", "Graph-SpectralClustering"]
         }
     },
     "brats_africa_winner": {
@@ -50,7 +66,11 @@
         "grid_params": {
             "thresholds": [0.5, 0.55, 0.6, 0.65, 0.7],
             "link_methods": ["Cosine"],
-            "cn_selectors": ["Label Propagation", "Bridging Centrality", "Louvain", "Structural Diversity"]
+            "cn_selectors": ["Label Propagation", "Bridging Centrality", "Louvain", "Structural Diversity"],
+            "gfsir_nfeatures": [10, 20, 30],
+            "gfsir_minth": ["auto", 0.0, 0.3, 0.7],
+            "gfsir_maxth": [1.0],
+            "gfsir_selector": ["Graph-ConnectedComponents", "Graph-Louvain", "Graph-SpectralClustering"]
         }
     },
     "sample": {
@@ -60,7 +80,11 @@
         "grid_params": {
             "thresholds": [0.0, 0.15, 0.3, 0.5, 0.55, 0.6, 0.65, 0.7],
             "link_methods": ["Cosine", "Spearman", "Pearson", "Rho distance"],
-            "cn_selectors": ["Label Propagation", "Bridging Centrality", "Louvain", "Structural Diversity"]
+            "cn_selectors": ["Label Propagation", "Bridging Centrality", "Louvain", "Structural Diversity"],
+            "gfsir_nfeatures": [10, 20, 30],
+            "gfsir_minth": ["auto", 0.0, 0.3, 0.7],
+            "gfsir_maxth": [1.0],
+            "gfsir_selector": ["Graph-ConnectedComponents", "Graph-Louvain", "Graph-SpectralClustering"]
         }
     }
 }

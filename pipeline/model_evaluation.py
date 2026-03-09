@@ -21,6 +21,7 @@ from boruta import BorutaPy
 from sklearn.linear_model import LogisticRegression
 from pipeline.GFSIR.graph_feature_selection import GraphFeatureSelection
 warnings.filterwarnings("ignore", category=ConvergenceWarning)
+np.random.seed(42)
 
 # Loading the config json
 with open('input/config.json', 'r') as file:
@@ -35,7 +36,7 @@ def jaccard(a, b):
 
 def compute_auroc(y_true, y_proba, model):
     """
-    Computes AUROC for binary or multiclass problems.
+    Computes AUROC for binary or multiclass datasets.
     Ensures consistency across CV folds by restricting to present classes.
     """
     present_classes = np.unique(y_true)
@@ -128,6 +129,10 @@ def evaluate_with_predefined_split(
         "link_method": selector_params.get("link") if selector_params else None,
         "threshold": selector_params.get("threshold") if selector_params else None,
         "cn_selector": selector_params.get("cn_selector") if selector_params else None,
+        "gfsir_nfeatures": selector_params.get("gfsir_nfeatures") if selector_params else None,
+        "gfsir_minth": selector_params.get("gfsir_minth") if selector_params else None,
+        "gfsir_maxth": selector_params.get("gfsir_maxth") if selector_params else None,
+        "gfsir_selector": selector_params.get("gfsir_selector") if selector_params else None,
         "accuracy_mean": acc,
         "accuracy_std": 0.0,
         "balanced_accuracy_mean": bal_acc,
@@ -170,7 +175,8 @@ def evaluate_with_kfold(kf, X, y, selector_fn, selector_name, selector_params=No
             selector_params["save_fig"] = False
             # Only the first fold will generate a plot
 
-        selected = [f for f in selected if f in X.columns]
+        # selected = [f for f in selected if f in X.columns]
+        selected = list(set(selected).intersection(X.columns))
         if len(selected) == 0:
             warnings.warn(
                 f"[Fold {fold}] No features selected by {selector_name}. Recording NaNs.",
@@ -221,6 +227,10 @@ def evaluate_with_kfold(kf, X, y, selector_fn, selector_name, selector_params=No
         "link_method": selector_params.get("link") if selector_params else None,
         "threshold": selector_params.get("threshold") if selector_params else None,
         "cn_selector": selector_params.get("cn_selector") if selector_params else None,
+        "gfsir_nfeatures": selector_params.get("gfsir_nfeatures") if selector_params else None,
+        "gfsir_minth": selector_params.get("gfsir_minth") if selector_params else None,
+        "gfsir_maxth": selector_params.get("gfsir_maxth") if selector_params else None,
+        "gfsir_selector": selector_params.get("gfsir_selector") if selector_params else None,
         "accuracy_mean": np.mean(accs),
         "accuracy_std": np.std(accs),
         "balanced_accuracy_mean": np.mean(bal_accs),
@@ -228,9 +238,10 @@ def evaluate_with_kfold(kf, X, y, selector_fn, selector_name, selector_params=No
         "auroc_mean": np.mean(aurocs),
         "auroc_std": np.std(aurocs),
         "feature_stability": stability,
-        "runtime_mean": np.mean(runtimes),
-        "features_mean": int(np.mean(n_features_all))
+        "runtime_mean": np.nanmean(runtimes),
+        "features_mean": np.mean(n_features_all)
     }
+    # "runtime_mean": np.mean(runtimes),
 
 # included an L1-regularized logistic regression as a sparse linear baseline instead of LASSO
 def l1logistic_selector(X_train, y_train, params=None):
@@ -243,6 +254,7 @@ def l1logistic_selector(X_train, y_train, params=None):
         C=1.0,
         class_weight="balanced",
         max_iter=5000,
+        random_state=42,
     )
     model.fit(X_scaled, y_train)
 
@@ -281,42 +293,34 @@ def anova_selector(X_train, y_train, params=None):
     threshold = np.nanmedian(scores)
     return X_train.columns[scores >= threshold].tolist()
 
-def _gfsir_memory_selector(X_train, y_train, params=None, method="Graph-ConnectedComponents"):
+def gfsir_grid(X_train, y_train, params=None):
+    assert params is not None
 
     # You must obtain the GFSIR repository for requesting this selector
     selector = GraphFeatureSelection(
         input_dir=".",
         output_dir=".",
-        lower_threshold=0.3,
-        upper_threshold=1.0,
-        n_features=20
+        lower_threshold=params["gfsir_minth"],
+        upper_threshold=params["gfsir_maxth"],
+        n_features=params["gfsir_nfeatures"]
     )
 
+    # Automatic threshold definition
+    if params["gfsir_minth"] == "auto":
+        df_selected = selector.apply_graph_feature_selection(
+            X_train.copy(),
+            method=params["gfsir_selector"],
+            mode="adaptive"
+        )
+        return df_selected.columns.tolist()
+
+    # Threshold definition by providing bounds
     df_selected = selector.apply_graph_feature_selection(
         X_train.copy(),
-        method=method,
+        method=params["gfsir_selector"],
         mode="manual"
     )
-
     return df_selected.columns.tolist()
-
-def gfsir_connected(X_train, y_train, params=None):
-    return _gfsir_memory_selector(
-        X_train, y_train, params,
-        method="Graph-ConnectedComponents"
-    )
-
-def gfsir_louvain(X_train, y_train, params=None):
-    return _gfsir_memory_selector(
-        X_train, y_train, params,
-        method="Graph-Louvain"
-    )
-
-def gfsir_spectral(X_train, y_train, params=None):
-    return _gfsir_memory_selector(
-        X_train, y_train, params,
-        method="Graph-SpectralClustering"
-    )
 
 def boruta_selector(X_train, y_train, params=None):
     scaler = StandardScaler()
@@ -324,7 +328,7 @@ def boruta_selector(X_train, y_train, params=None):
 
     # Random Forest required by Boruta
     rf = RandomForestClassifier(
-        n_estimators=500,
+        n_estimators=200,
         random_state=42,
         n_jobs=-1,
         class_weight="balanced"
@@ -344,6 +348,7 @@ def boruta_selector(X_train, y_train, params=None):
 
 def graph_selector(X_train, y_train, params):
     assert params is not None
+    image_filename = f"{params['dataset']}_{params['link']}_{params['threshold']:.2f}_{params['cn_selector']}_radiomic_graph.png"
     return select_cn_centers(
         X_train,
         threshold=params["threshold"],
@@ -351,7 +356,7 @@ def graph_selector(X_train, y_train, params):
         link_method=params["link"],
         seed_nb=params["seed"],
         save_fig=params["save_fig"],
-        png_path = f"outputs/{params['dataset']}/feature_plots/{params['dataset']}_{params['link']}_{params['threshold']:.2f}_{params['cn_selector']}_radiomic_graph.png",
+        png_path = f"outputs/{params['dataset']}/feature_plots/{image_filename}",
     )
 
 # Estimative of the best threshold values for a given dataset
@@ -433,6 +438,10 @@ def model_benchmarking(dataset="sample"):
     thresholds = config[dataset]['grid_params']['thresholds']
     link_methods = config[dataset]['grid_params']['link_methods']
     cn_selectors = config[dataset]['grid_params']['cn_selectors']
+    gfsir_nfeatures = config[dataset]['grid_params']['gfsir_nfeatures']
+    gfsir_minth = config[dataset]['grid_params']['gfsir_minth']
+    gfsir_maxth = config[dataset]['grid_params']['gfsir_maxth']
+    gfsir_selector = config[dataset]['grid_params']['gfsir_selector']
 
     # Loading the original radiomic features
     radiomic_features_path = f"{config[dataset]['output_path']}{dataset}_radiomic_features.csv"
@@ -489,10 +498,21 @@ def model_benchmarking(dataset="sample"):
     else:
         estimate_best_graph_params(model_data['X_train'])
 
-    # GFSIR selector from the source article
-    results.append(run_eval(model_data, gfsir_connected, "GFSIR Connected", kf=kf))
-    results.append(run_eval(model_data, gfsir_louvain, "GFSIR Louvain", kf=kf))
-    results.append(run_eval(model_data, gfsir_spectral, "GFSIR Spectral", kf=kf))
+    # GFSIR selector, please, extract it from the author
+    # https://github.com/hmMed22/GFSIR
+    # results.append(run_eval(model_data, gfsir_connected, "GFSIR Connected", kf=kf))
+    # results.append(run_eval(model_data, gfsir_louvain, "GFSIR Louvain", kf=kf))
+    # results.append(run_eval(model_data, gfsir_spectral, "GFSIR Spectral", kf=kf))
+    for nfeatures, minth, maxth, selector in itertools.product(gfsir_nfeatures, gfsir_minth, gfsir_maxth, gfsir_selector):
+   
+        params = {
+            "gfsir_nfeatures": nfeatures,
+            "gfsir_minth": minth,
+            "gfsir_maxth": maxth,
+            "gfsir_selector": selector,
+        }
+
+        results.append(run_eval(model_data, gfsir_grid, "GFSIR", selector_params=params, kf=kf))
 
     # Classical Feature Selectors from literature
     print("\nRunning classical feature selectors...")
@@ -514,32 +534,34 @@ def model_benchmarking(dataset="sample"):
             "link": link,
         }
 
-        results.append(run_eval(model_data, graph_selector, "Complex Network", selector_params=params, kf=kf))
+        results.append(run_eval(model_data, graph_selector, "DyGraFS", selector_params=params, kf=kf))
 
-    print("\n==============================\nFINAL BENCHMARK SUMMARY\n==============================")
     summary = pd.DataFrame(results)
-    print(summary.sort_values(by="accuracy_mean", ascending=False).reset_index(drop=True))
-
-    elapsed = time.time() - total_time_start
-    hours = int(elapsed // 3600)
-    minutes = int((elapsed % 3600) // 60)
-    seconds = int(elapsed % 60)
-    print(f"Total runtime: {hours}h {minutes}m {seconds}s")
-    if use_kfold:
-        print(f"Total samples: {model_data['X'].shape[0]}")
-    else:
-        print(f"Total samples: {model_data['X_train'].shape[0]}")
-    
-    if kf is not None:
-        print(f"CV strategy: {kf.get_n_splits()}-fold StratifiedKFold")
-
-    # Saving results
     summary.to_csv(f"outputs/{dataset}/{dataset}_benchmark_results.csv", index=False)
-    print(f"\nResults saved to {dataset}_benchmark_results.csv")
-    plots.print_cn_performance_summary(summary, metric="balanced_accuracy")
+    outfile = f"outputs/{dataset}/results_metadata.txt"
+
+    with open(outfile, "a") as f:
+
+        elapsed = time.time() - total_time_start
+        hours = int(elapsed // 3600)
+        minutes = int((elapsed % 3600) // 60)
+        seconds = int(elapsed % 60)
+
+        f.write(f"Total runtime: {hours}h {minutes}m {seconds}s\n")
+        if use_kfold:
+            f.write(f"Total samples: {model_data['X'].shape[0]}\n")
+        else:
+            f.write(f"Total samples: {model_data['X_train'].shape[0]}\n")
+
+        if kf is not None:
+            f.write(f"CV strategy: {kf.get_n_splits()}-fold StratifiedKFold\n")
+
+        print(f"\nResults saved to {dataset}_benchmark_results.csv\n")
+
+    plots.print_cn_performance_summary(outfile, summary)
 
     df_plot = summary[
-        (summary["selector"] == "Complex Network") &
+        (summary["selector"] == "DyGraFS") &
         (summary["threshold"].notna())
     ].copy()
 

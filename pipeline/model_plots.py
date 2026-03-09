@@ -32,7 +32,7 @@ def accuracy_vs_runtime_by_threshold(summary, dataset):
             c="steelblue",
             s=60,
             alpha=0.6,
-            label="Non-CN"
+            label="Other selectors"
         )
 
         cn = df[
@@ -48,7 +48,7 @@ def accuracy_vs_runtime_by_threshold(summary, dataset):
             alpha=0.9,
             edgecolor="black",
             linewidth=0.5,
-            label="CN"
+            label="DyGraFS"
         )
 
         ax.set_title(group)
@@ -86,7 +86,7 @@ def accuracy_vs_runtime_by_link_method(summary, dataset):
             c="steelblue",
             s=60,
             alpha=0.6,
-            label="Non-CN"
+            label="Other selectors"
         )
 
         # CN selectors for this link_method only
@@ -103,7 +103,7 @@ def accuracy_vs_runtime_by_link_method(summary, dataset):
             alpha=0.9,
             edgecolor="black",
             linewidth=0.5,
-            label="CN"
+            label="DyGraFS"
         )
 
         ax.set_title(f"Link method: {link}")
@@ -141,7 +141,7 @@ def accuracy_vs_runtime_by_cn_selector(summary, dataset):
             c="steelblue",
             s=60,
             alpha=0.6,
-            label="Non-CN"
+            label="Other selectors"
         )
 
         # Only this CN selector
@@ -155,7 +155,7 @@ def accuracy_vs_runtime_by_cn_selector(summary, dataset):
             alpha=0.9,
             edgecolor="black",
             linewidth=0.5,
-            label=f"CN"
+            label=f"DyGraFS"
         )
         ax.set_title(f"CN selector: {cn_sel}")
         ax.grid(alpha=0.3)
@@ -211,8 +211,8 @@ def accuracy_vs_features_by_link_method(summary, dataset):
     fig, axes = plt.subplots(2, 2, figsize=(12, 10), sharex=True, sharey=True)
     axes = axes.flatten()
 
-    cn_df = df[df["selector"] == "Complex Network"]
-    non_cn_df = df[df["selector"] != "Complex Network"]
+    cn_df = df[df["selector"] == "DyGraFS"]
+    non_cn_df = df[df["selector"] != "DyGraFS"]
 
     for ax, link in zip(axes, LINK_METHODS):
 
@@ -240,7 +240,7 @@ def accuracy_vs_features_by_link_method(summary, dataset):
             alpha=0.85,
             edgecolor="black",
             linewidth=0.5,
-            label="Complex Network"
+            label="DyGraFS"
         )
 
         ax.set_title(f"Link method: {link}")
@@ -275,8 +275,8 @@ def accuracy_vs_features_by_threshold(summary, dataset):
     ]
 
     # Split CN vs non-CN
-    cn_df = df[df["selector"] == "Complex Network"].copy()
-    non_cn_df = df[df["selector"] != "Complex Network"]
+    cn_df = df[df["selector"] == "DyGraFS"].copy()
+    non_cn_df = df[df["selector"] != "DyGraFS"]
 
     cn_df["thresh_group"] = pd.cut(cn_df["threshold"], bins=bins, labels=labels)
 
@@ -307,7 +307,7 @@ def accuracy_vs_features_by_threshold(summary, dataset):
             alpha=0.85,
             edgecolor="black",
             linewidth=0.5,
-            label="Complex Network"
+            label="DyGraFS"
         )
 
         ax.set_title(group)
@@ -337,8 +337,8 @@ def accuracy_vs_features_by_cn_selector(summary, dataset):
     """
     df = summary.copy()
 
-    cn_df = df[df["selector"] == "Complex Network"]
-    non_cn_df = df[df["selector"] != "Complex Network"]
+    cn_df = df[df["selector"] == "DyGraFS"]
+    non_cn_df = df[df["selector"] != "DyGraFS"]
 
     fig, axes = plt.subplots(2, 2, figsize=(12, 10), sharex=True, sharey=True)
     axes = axes.flatten()
@@ -367,7 +367,7 @@ def accuracy_vs_features_by_cn_selector(summary, dataset):
             alpha=0.85,
             edgecolor="black",
             linewidth=0.5,
-            label="Complex Network"
+            label="DyGraFS"
         )
 
         ax.set_title(f"CN selector: {cn_sel}")
@@ -389,22 +389,26 @@ def accuracy_vs_features_by_cn_selector(summary, dataset):
     plt.savefig(out_path, dpi=300)
     plt.close()
 
-def print_cn_performance_summary(summary, metric="balanced_accuracy"):
+def print_cn_performance_summary(outfile, summary):
     """
     Print aggregated performance statistics for Complex Network selectors
     in a single table, including an 'all' row for overall performance.
+    Also saves the output to a txt file.
     """
 
     df = summary.copy()
 
-    # Keep only Complex Network runs
-    df = df[df["selector"] == "Complex Network"]
+    # Keep only DyGraFS(Complex Network) runs
+    df = df[df["selector"] == "DyGraFS"]
 
     if df.empty:
-        print("No complex network selectors found in summary.")
+        text = "No DyGraFS selectors found in summary."
+        print(text)
+        with open(outfile, "a") as f:
+            f.write(text + "\n")
         return
 
-    metric_col = f"{metric}_mean"
+    metric_col = f"balanced_accuracy_mean"
 
     # Create a copy with a fake group called "all" for overall stats
     df_all = df.copy()
@@ -428,6 +432,17 @@ def print_cn_performance_summary(summary, metric="balanced_accuracy"):
         .sort_values("cn_selector", ascending=False)
     )
 
-    print("\n===== Complex Network Performance Summary =====")
-    print(stats.round(4))
-    print("==============================================\n")
+    header = "\n===== Complex Network Performance Summary ====="
+    table = stats.round(4).to_string()
+    footer = "==============================================\n"
+
+    # Print to console
+    print(header)
+    print(table)
+    print(footer)
+
+    # Save to txt file
+    with open(outfile, "a") as f:
+        f.write(header + "\n")
+        f.write(table + "\n")
+        f.write(footer)

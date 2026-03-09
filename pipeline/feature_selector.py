@@ -3,10 +3,12 @@ import json
 import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
+import os
 import pandas as pd
 from sklearn.feature_selection import VarianceThreshold
 from sklearn.metrics.pairwise import cosine_similarity
 from scipy.stats import spearmanr
+np.random.seed(42)
 
 # # Loading the config json
 with open('input/config.json', 'r') as file:
@@ -134,7 +136,7 @@ def select_cn_centers(
 
         # --- Select one representative per community ---
         for comm in communities:
-            # Single-node community → keep it
+            # Single-node community -> keep it
             if len(comm) < 2:
                 centers.extend(comm)
                 continue
@@ -177,6 +179,8 @@ def select_cn_centers(
             center = max(degrees, key=degrees.get)
             centers.append(center)
 
+    # Page rank and betweenes were discarded in the experiment due to lower performance
+    # but they can be used as well
     elif cn_selector == "Page Rank":
         pr = nx.pagerank(G)
         thr = np.percentile(list(pr.values()), 75)
@@ -246,7 +250,9 @@ def select_cn_centers(
         plt.title(f"Radiomic Graph / Method: {cn_selector}", fontsize=14)
         plt.axis("off")
         plt.tight_layout()
-        plt.savefig(png_path, dpi=300)
+        os.makedirs(os.path.dirname(png_path), exist_ok=True)
+
+        plt.savefig(png_path, dpi=120)
         plt.close()
 
     return centers

@@ -1,0 +1,13 @@
+Total runtime: 1h 21m 0s
+Total samples: 421
+CV strategy: 2-fold StratifiedKFold
+
+===== Complex Network Performance Summary =====
+                        mean     std  median     min     max  n_runs
+cn_selector                                                         
+all                   0.3304  0.0371  0.3408  0.1691  0.3740     128
+Structural Diversity  0.3391  0.0234  0.3486  0.2796  0.3740      32
+Louvain               0.3317  0.0252  0.3374  0.2602  0.3682      32
+Label Propagation     0.3075  0.0599  0.3345  0.1691  0.3685      32
+Bridging Centrality   0.3432  0.0088  0.3425  0.3281  0.3654      32
+==============================================

@@ -1,4 +1,6 @@
 venv
+.venv
 /outputs/*/feature_plots/
 /outputs/*/feature_plots/*.png
 /outputs/*/*.zip
+/pipeline/GFSIR
