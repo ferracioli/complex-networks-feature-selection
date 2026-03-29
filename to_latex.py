@@ -52,7 +52,7 @@ if __name__ == "__main__":
 
     columns_to_keep = [
         "selector",
-        "link_method",
+        "similarity_function",
         "threshold",
         "cn_selector",
         "gfsir_nfeatures",

@@ -17,15 +17,15 @@ with open('input/config.json', 'r') as file:
 def generate_network(
     df,
     threshold=0.7,
-    link_method="cosine",
+    similarity_function="cosine",
 ):
     """
-    Function that generates a complex network based on the input dataframe and link method
+    Function that generates a complex network based on the input dataframe and similarity function
     
     Args:
         df (radiomic DataFrame):
         threshold (float): Correlation threshold for edge creation.
-        link_method (str): method used for link generating in the network
+        similarity_function (str): method used for edge generation in the network
         
     Returns:
         nx.Graph: The generated network in networkX format
@@ -56,18 +56,18 @@ def generate_network(
                       (feature_vectors.std(axis=1, keepdims=True) + 1e-8)
 
     # Compute similarity
-    if link_method == "Cosine":
+    if similarity_function == "Cosine":
         similarity_matrix = cosine_similarity(feature_vectors)
 
-    elif link_method == "Spearman":
+    elif similarity_function == "Spearman":
         corr, _ = spearmanr(feature_vectors, axis=1)
         similarity_matrix = np.abs(np.triu(corr, 0))
 
-    elif link_method == "Pearson":
+    elif similarity_function == "Pearson":
         corr = np.corrcoef(feature_vectors)
         similarity_matrix = np.abs(corr)
 
-    elif link_method == "Rho distance":
+    elif similarity_function == "Rho distance":
         corr = np.corrcoef(feature_vectors)
         corr = np.nan_to_num(corr, nan=0.0)
         d = np.sqrt(2 * (1 - corr))  # distance in [0, 2]
@@ -75,7 +75,7 @@ def generate_network(
         similarity_matrix = 1 - (d / np.max(d))
 
     else:
-        raise ValueError(f"Invalid link_method: {link_method}")
+        raise ValueError(f"Invalid similarity_function: {similarity_function}")
 
     # Build graph
     G = nx.Graph()
@@ -101,7 +101,7 @@ def select_cn_centers(
     threshold=0.7,
     png_path="radiomic_graph.png",
     cn_selector="Label Propagation", 
-    link_method="Spearman",
+    similarity_function="Spearman",
     seed_nb=42,
     save_fig=False,
 ):
@@ -113,7 +113,7 @@ def select_cn_centers(
         threshold (float): Correlation threshold for edge creation.
         png_path (str): Output graph visualization path.
         cn_selector (str): Community detection/selection method ("Label Propagation", "Louvain", "Betweeness" or "Page Rank").
-        link_method (str): method used for link generating in the network
+        similarity_function (str): method used for edge generation in the network
 
     Returns:
         centers (list): Selected feature names (community centers).
@@ -124,7 +124,7 @@ def select_cn_centers(
     selected_cols = df.columns[vt.get_support()]
     df = pd.DataFrame(df_reduced, columns=selected_cols)
 
-    G, _ = generate_network(df=df, threshold=threshold, link_method=link_method)
+    G, _ = generate_network(df=df, threshold=threshold, similarity_function=similarity_function)
     if G.number_of_nodes() == 0:
         return []
 

@@ -8,7 +8,7 @@
         "to_remove_columns": [],
         "grid_params": {
             "thresholds": [0.0, 0.15, 0.3, 0.5, 0.55, 0.6, 0.65, 0.7],
-            "link_methods": ["Cosine", "Spearman", "Pearson", "Rho distance"],
+            "similarity_functions": ["Cosine", "Spearman", "Pearson", "Rho distance"],
             "cn_selectors": ["Label Propagation", "Bridging Centrality", "Louvain", "Structural Diversity"],
             "gfsir_nfeatures": [10, 20, 30],
             "gfsir_minth": ["auto", 0.0, 0.3, 0.7],
@@ -22,7 +22,7 @@
         "to_remove_columns": ["PatientName","Age","clinical.T.Stage","Clinical.N.Stage","Clinical.M.Stage","Overall.Stage","Histology","Gender","Survival.time","deadstatus.event","Normalization","binWidth","diagnostics_Versions_PyRadiomics","diagnostics_Versions_Numpy","diagnostics_Versions_SimpleITK","diagnostics_Versions_PyWavelet","diagnostics_Versions_Python","diagnostics_Configuration_Settings","diagnostics_Configuration_EnabledImageTypes","diagnostics_Image-original_Hash","diagnostics_Image-original_Dimensionality","diagnostics_Image-original_Spacing","diagnostics_Image-original_Size","diagnostics_Image-original_Mean","diagnostics_Image-original_Minimum","diagnostics_Image-original_Maximum","diagnostics_Mask-original_Hash","diagnostics_Mask-original_Spacing","diagnostics_Mask-original_Size","diagnostics_Mask-original_BoundingBox","diagnostics_Mask-original_VoxelNum","diagnostics_Mask-original_VolumeNum","diagnostics_Mask-original_CenterOfMassIndex","diagnostics_Mask-original_CenterOfMass"],
         "grid_params": {
             "thresholds": [0.0, 0.15, 0.3, 0.6, 0.65, 0.7, 0.75, 0.8],
-            "link_methods": ["Cosine", "Spearman", "Pearson", "Rho distance"],
+            "similarity_functions": ["Cosine", "Spearman", "Pearson", "Rho distance"],
             "cn_selectors": ["Label Propagation", "Bridging Centrality", "Louvain", "Structural Diversity"],
             "gfsir_nfeatures": [10, 20, 30],
             "gfsir_minth": ["auto", 0.0, 0.3, 0.7],
@@ -36,7 +36,7 @@
         "to_remove_columns": ["PatientName","Age","clinical.T.Stage","Clinical.N.Stage","Clinical.M.Stage","Overall.Stage","Histology","Gender","Survival.time","deadstatus.event","Normalization","binWidth","diagnostics_Versions_PyRadiomics","diagnostics_Versions_Numpy","diagnostics_Versions_SimpleITK","diagnostics_Versions_PyWavelet","diagnostics_Versions_Python","diagnostics_Configuration_Settings","diagnostics_Configuration_EnabledImageTypes","diagnostics_Image-original_Hash","diagnostics_Image-original_Dimensionality","diagnostics_Image-original_Spacing","diagnostics_Image-original_Size","diagnostics_Image-original_Mean","diagnostics_Image-original_Minimum","diagnostics_Image-original_Maximum","diagnostics_Mask-original_Hash","diagnostics_Mask-original_Spacing","diagnostics_Mask-original_Size","diagnostics_Mask-original_BoundingBox","diagnostics_Mask-original_VoxelNum","diagnostics_Mask-original_VolumeNum","diagnostics_Mask-original_CenterOfMassIndex","diagnostics_Mask-original_CenterOfMass"],
         "grid_params": {
             "thresholds": [0.0, 0.15, 0.3, 0.6, 0.65, 0.7, 0.75, 0.8],
-            "link_methods": ["Cosine", "Spearman", "Pearson", "Rho distance"],
+            "similarity_functions": ["Cosine", "Spearman", "Pearson", "Rho distance"],
             "cn_selectors": ["Label Propagation", "Bridging Centrality", "Louvain", "Structural Diversity"],
             "gfsir_nfeatures": [10, 20, 30],
             "gfsir_minth": ["auto", 0.0, 0.3, 0.7],
@@ -51,7 +51,7 @@
         "to_remove_columns": [],
         "grid_params": {
             "thresholds": [0.0, 0.15, 0.3, 0.5, 0.55, 0.6, 0.65, 0.7],
-            "link_methods": ["Cosine", "Spearman", "Pearson", "Rho distance"],
+            "similarity_functions": ["Cosine", "Spearman", "Pearson", "Rho distance"],
             "cn_selectors": ["Label Propagation", "Bridging Centrality", "Louvain", "Structural Diversity"],
             "gfsir_nfeatures": [10, 20, 30],
             "gfsir_minth": ["auto", 0.0, 0.3, 0.7],
@@ -65,7 +65,7 @@
         "to_remove_columns": [],
         "grid_params": {
             "thresholds": [0.5, 0.55, 0.6, 0.65, 0.7],
-            "link_methods": ["Cosine"],
+            "similarity_functions": ["Cosine"],
             "cn_selectors": ["Label Propagation", "Bridging Centrality", "Louvain", "Structural Diversity"],
             "gfsir_nfeatures": [10, 20, 30],
             "gfsir_minth": ["auto", 0.0, 0.3, 0.7],
@@ -79,7 +79,7 @@
         "to_remove_columns": [],
         "grid_params": {
             "thresholds": [0.0, 0.15, 0.3, 0.5, 0.55, 0.6, 0.65, 0.7],
-            "link_methods": ["Cosine", "Spearman", "Pearson", "Rho distance"],
+            "similarity_functions": ["Cosine", "Spearman", "Pearson", "Rho distance"],
             "cn_selectors": ["Label Propagation", "Bridging Centrality", "Louvain", "Structural Diversity"],
             "gfsir_nfeatures": [10, 20, 30],
             "gfsir_minth": ["auto", 0.0, 0.3, 0.7],

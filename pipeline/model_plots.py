@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 
 CN_SELECTORS = {"Label Propagation", "Bridging Centrality", "Louvain", "Structural Diversity"}
-LINK_METHODS = ["Cosine", "Spearman", "Pearson", "Rho distance"]
+SIMILARITY_FUNCTIONS = ["Cosine", "Spearman", "Pearson", "Rho distance"]
 
 def accuracy_vs_runtime_by_threshold(summary, dataset):
     df = summary.copy()
@@ -69,13 +69,13 @@ def accuracy_vs_runtime_by_threshold(summary, dataset):
     plt.savefig(out_path, dpi=300)
     plt.close()
 
-def accuracy_vs_runtime_by_link_method(summary, dataset):
+def accuracy_vs_runtime_by_similarity_function(summary, dataset):
     df = summary.copy()
 
     fig, axes = plt.subplots(2, 2, figsize=(12, 10), sharex=True, sharey=True)
     axes = axes.flatten()
 
-    for ax, link in zip(axes, LINK_METHODS):
+    for ax, similarity_function in zip(axes, SIMILARITY_FUNCTIONS):
 
         # Non-CN selectors
         non_cn = df[~df["cn_selector"].isin(CN_SELECTORS)]
@@ -89,10 +89,10 @@ def accuracy_vs_runtime_by_link_method(summary, dataset):
             label="Other selectors"
         )
 
-        # CN selectors for this link_method only
+        # CN selectors for this similarity_function only
         cn = df[
             (df["cn_selector"].isin(CN_SELECTORS)) &
-            (df["link_method"] == link)
+            (df["similarity_function"] == similarity_function)
         ]
 
         ax.scatter(
@@ -106,7 +106,7 @@ def accuracy_vs_runtime_by_link_method(summary, dataset):
             label="DyGraFS"
         )
 
-        ax.set_title(f"Link method: {link}")
+        ax.set_title(f"Similarity Function: {similarity_function}")
         ax.grid(alpha=0.3)
 
     axes[0].set_ylabel("Balanced Accuracy (mean)")
@@ -117,10 +117,10 @@ def accuracy_vs_runtime_by_link_method(summary, dataset):
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="upper center", ncol=2)
 
-    fig.suptitle(f"{dataset}: Accuracy vs Runtime by Link Method", fontsize=14)
+    fig.suptitle(f"{dataset}: Accuracy vs Runtime by Similarity Function", fontsize=14)
     fig.tight_layout(rect=[0, 0, 1, 0.95])
 
-    out_path = f"outputs/{dataset}/{dataset}_accuracy_vs_runtime_by_link_method.png"
+    out_path = f"outputs/{dataset}/{dataset}_accuracy_vs_runtime_by_similarity_function.png"
     plt.savefig(out_path, dpi=300)
     plt.close()
 
@@ -205,7 +205,7 @@ def performance_boxplot(summary, dataset, metric="balanced_accuracy"):
     plt.savefig(out_path, dpi=300)
     plt.close()
 
-def accuracy_vs_features_by_link_method(summary, dataset):
+def accuracy_vs_features_by_similarity_function(summary, dataset):
     df = summary.copy()
 
     fig, axes = plt.subplots(2, 2, figsize=(12, 10), sharex=True, sharey=True)
@@ -214,9 +214,9 @@ def accuracy_vs_features_by_link_method(summary, dataset):
     cn_df = df[df["selector"] == "DyGraFS"]
     non_cn_df = df[df["selector"] != "DyGraFS"]
 
-    for ax, link in zip(axes, LINK_METHODS):
+    for ax, similarity_function in zip(axes, SIMILARITY_FUNCTIONS):
 
-        # Non-CN selectors (independent of link method)
+        # Non-CN selectors (independent of Similarity Function)
         for selector in non_cn_df["selector"].unique():
             sub_sel = non_cn_df[non_cn_df["selector"] == selector]
 
@@ -229,12 +229,12 @@ def accuracy_vs_features_by_link_method(summary, dataset):
                 label=selector
             )
 
-        # CN selectors for this link method
-        cn_link = cn_df[cn_df["link_method"] == link]
+        # CN selectors for this Similarity Function
+        cn_similarity_function = cn_df[cn_df["similarity_function"] == similarity_function]
 
         ax.scatter(
-            cn_link["features_mean"],
-            cn_link["balanced_accuracy_mean"],
+            cn_similarity_function["features_mean"],
+            cn_similarity_function["balanced_accuracy_mean"],
             c="orange",
             s=80,
             alpha=0.85,
@@ -243,7 +243,7 @@ def accuracy_vs_features_by_link_method(summary, dataset):
             label="DyGraFS"
         )
 
-        ax.set_title(f"Link method: {link}")
+        ax.set_title(f"Similarity Function: {similarity_function}")
         ax.grid(alpha=0.3)
 
     axes[0].set_ylabel("Balanced Accuracy (mean)")
@@ -256,10 +256,10 @@ def accuracy_vs_features_by_link_method(summary, dataset):
     by_label = dict(zip(labels, handles))
     fig.legend(by_label.values(), by_label.keys(), loc="upper center", ncol=4)
 
-    fig.suptitle(f"{dataset}: Accuracy vs Features by Link Method", fontsize=14)
+    fig.suptitle(f"{dataset}: Accuracy vs Features by Similarity Function", fontsize=14)
     fig.tight_layout(rect=[0, 0, 1, 0.93])
 
-    out_path = f"outputs/{dataset}/{dataset}_accuracy_vs_features_by_link_method.png"
+    out_path = f"outputs/{dataset}/{dataset}_accuracy_vs_features_by_similarity_function.png"
     plt.savefig(out_path, dpi=300)
     plt.close()
 
@@ -446,3 +446,63 @@ def print_cn_performance_summary(outfile, summary):
         f.write(header + "\n")
         f.write(table + "\n")
         f.write(footer)
+
+def accuracy_vs_threshold_by_cn_selector(summary, dataset):
+    """
+    Generates 4 subplots (one for each CN selector) showing 
+    Balanced Accuracy vs. Threshold.
+    """
+    df = summary.copy()
+
+    # Create the 2x2 grid
+    fig, axes = plt.subplots(2, 2, figsize=(12, 10), sharex=True, sharey=True)
+    axes = axes.flatten()
+
+    # Iterate through selectors (assuming CN_SELECTORS is a predefined list of 4)
+    for ax, cn_sel in zip(axes, sorted(CN_SELECTORS)):
+
+        # 1. Plot "Other selectors" as background reference (Steelblue)
+        non_cn = df[~df["cn_selector"].isin(CN_SELECTORS)]
+        ax.scatter(
+            non_cn["threshold"],
+            non_cn["balanced_accuracy_mean"],
+            c="steelblue",
+            s=60,
+            alpha=0.4, # Slightly more transparent to emphasize the target
+            label="Other selectors"
+        )
+
+        # 2. Plot the specific CN selector for this subplot (Orange)
+        cn = df[df["cn_selector"] == cn_sel]
+        ax.scatter(
+            cn["threshold"],
+            cn["balanced_accuracy_mean"],
+            c="orange",
+            s=80,
+            alpha=0.9,
+            edgecolor="black",
+            linewidth=0.5,
+            label="DyGraFS"
+        )
+
+        ax.set_title(f"CN selector: {cn_sel}")
+        ax.grid(alpha=0.3)
+
+    # Add axis labels to the outer plots
+    axes[0].set_ylabel("Balanced Accuracy (mean)")
+    axes[2].set_ylabel("Balanced Accuracy (mean)")
+    axes[2].set_xlabel("Threshold")
+    axes[3].set_xlabel("Threshold")
+
+    # Handle the Legend
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="upper center", ncol=2)
+
+    # Main Title and Layout
+    fig.suptitle(f"{dataset}: Accuracy vs. Threshold by CN Selector", fontsize=14)
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
+
+    # Save the output
+    out_path = f"outputs/{dataset}/{dataset}_accuracy_vs_threshold_by_cn_selector.png"
+    plt.savefig(out_path, dpi=300)
+    plt.close()

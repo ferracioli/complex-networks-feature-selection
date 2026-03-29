@@ -1,4 +1,4 @@
-selector,link_method,threshold,cn_selector,gfsir_nfeatures,gfsir_minth,gfsir_maxth,gfsir_selector,accuracy_mean,accuracy_std,balanced_accuracy_mean,balanced_accuracy_std,auroc_mean,auroc_std,feature_stability,runtime_mean,features_mean
+selector,similarity_function,threshold,cn_selector,gfsir_nfeatures,gfsir_minth,gfsir_maxth,gfsir_selector,accuracy_mean,accuracy_std,balanced_accuracy_mean,balanced_accuracy_std,auroc_mean,auroc_std,feature_stability,runtime_mean,features_mean
 GFSIR,,,,10.0,auto,1.0,Graph-ConnectedComponents,0.34434664861205144,0.030060934326337163,0.254825975763848,0.020429925925519316,0.5645913216637938,0.020882280027844646,0.8181818181818182,20.12695848941803,10.0
 GFSIR,,,,10.0,auto,1.0,Graph-Louvain,0.4322839088241932,0.008474385014669378,0.31182764874940605,0.008483594280913803,0.6266344463349457,0.008884125877612448,0.3333333333333333,23.200129985809326,10.0
 GFSIR,,,,10.0,auto,1.0,Graph-SpectralClustering,0.45367862784924395,0.0012976754682915703,0.31683658819398564,0.005735031978833988,0.6054552477106288,0.023109823050023015,0.25,21.10483968257904,10.0
