@@ -126,7 +126,7 @@ def evaluate_with_predefined_split(
     print(f"Runtime: {runtime}, selected features: {len(selected)}")
     return {
         "selector": selector_name,
-        "link_method": selector_params.get("link") if selector_params else None,
+        "similarity_function": selector_params.get("similarity_function") if selector_params else None,
         "threshold": selector_params.get("threshold") if selector_params else None,
         "cn_selector": selector_params.get("cn_selector") if selector_params else None,
         "gfsir_nfeatures": selector_params.get("gfsir_nfeatures") if selector_params else None,
@@ -224,7 +224,7 @@ def evaluate_with_kfold(kf, X, y, selector_fn, selector_name, selector_params=No
     print(f"Runtime mean: {np.mean(runtimes)}, selected features mean: {int(np.mean(n_features_all))}")
     return {
         "selector": selector_name,
-        "link_method": selector_params.get("link") if selector_params else None,
+        "similarity_function": selector_params.get("similarity_function") if selector_params else None,
         "threshold": selector_params.get("threshold") if selector_params else None,
         "cn_selector": selector_params.get("cn_selector") if selector_params else None,
         "gfsir_nfeatures": selector_params.get("gfsir_nfeatures") if selector_params else None,
@@ -348,12 +348,12 @@ def boruta_selector(X_train, y_train, params=None):
 
 def graph_selector(X_train, y_train, params):
     assert params is not None
-    image_filename = f"{params['dataset']}_{params['link']}_{params['threshold']:.2f}_{params['cn_selector']}_radiomic_graph.png"
+    image_filename = f"{params['dataset']}_{params['similarity_function']}_{params['threshold']:.2f}_{params['cn_selector']}_radiomic_graph.png"
     return select_cn_centers(
         X_train,
         threshold=params["threshold"],
         cn_selector=params["cn_selector"],
-        link_method=params["link"],
+        similarity_function=params["similarity_function"],
         seed_nb=params["seed"],
         save_fig=params["save_fig"],
         png_path = f"outputs/{params['dataset']}/feature_plots/{image_filename}",
@@ -370,7 +370,7 @@ def estimate_best_graph_params(X):
     results = {}
     print("\n=== Automatic Graph Parameter Estimation ===")
 
-    link_methods = ("pearson", "spearman")
+    similarity_functions = ("pearson", "spearman")
 
     # Find the threshold interval where only 15% of the data survives
     # this range will have a low amount of correlated features, and will
@@ -378,8 +378,8 @@ def estimate_best_graph_params(X):
     TARGET_DENSITY = 0.15
     TH_GRID = np.linspace(0.3, 0.9, 61)
 
-    for link in link_methods:
-        corr = X.corr(method=link)
+    for similarity_function in similarity_functions:
+        corr = X.corr(method=similarity_function)
 
         # Upper triangle only
         upper = corr.where(np.triu(np.ones(corr.shape), k=1).astype(bool))
@@ -398,7 +398,7 @@ def estimate_best_graph_params(X):
         density = densities[best_idx]
         th_range = (max(0.0, base_th - 0.1), min(1.0, base_th + 0.1))
 
-        results[link] = {
+        results[similarity_function] = {
             "mean_corr": mean_corr,
             "median_corr": median_corr,
             "threshold": base_th,
@@ -406,16 +406,16 @@ def estimate_best_graph_params(X):
             "range": th_range
         }
 
-    # Select best link method (balanced density)
-    best_link = min(
+    # Select best similarity function (balanced density)
+    best_sim = min(
         results.keys(),
         key=lambda k: abs(results[k]["density"] - TARGET_DENSITY)
     )
 
-    best = results[best_link]
+    best = results[best_sim]
 
     print("\n=== Recommended Parameters ===")
-    print(f"link_method   : {best_link}")
+    print(f"similarity_function   : {best_sim}")
     print(f"threshold     : {best['threshold']:.2f}")
     print(f"density       : {best['density']:.3f}")
     print(f"threshold_rng : {best['range']}")
@@ -436,7 +436,7 @@ def run_model_with_splits(X_train, X_test, y_train, y_test, description=""):
 def model_benchmarking(dataset="sample"):
 
     thresholds = config[dataset]['grid_params']['thresholds']
-    link_methods = config[dataset]['grid_params']['link_methods']
+    similarity_functions = config[dataset]['grid_params']['similarity_functions']
     cn_selectors = config[dataset]['grid_params']['cn_selectors']
     gfsir_nfeatures = config[dataset]['grid_params']['gfsir_nfeatures']
     gfsir_minth = config[dataset]['grid_params']['gfsir_minth']
@@ -525,13 +525,13 @@ def model_benchmarking(dataset="sample"):
     results.append(run_eval(model_data, boruta_selector, "Boruta", kf=kf))
 
     # Checking complex network feature selector with multiple parameters
-    for link, th, cn, in itertools.product(link_methods, thresholds, cn_selectors):
+    for similarity_function, th, cn, in itertools.product(similarity_functions, thresholds, cn_selectors):
 
         params = {
             "dataset": dataset,
             "threshold": th,
             "cn_selector": cn,
-            "link": link,
+            "similarity_function": similarity_function,
         }
 
         results.append(run_eval(model_data, graph_selector, "DyGraFS", selector_params=params, kf=kf))
@@ -567,9 +567,10 @@ def model_benchmarking(dataset="sample"):
 
     if len(df_plot) > 0:
         plots.accuracy_vs_runtime_by_threshold(summary, dataset)
-        plots.accuracy_vs_runtime_by_link_method(summary, dataset)
+        plots.accuracy_vs_runtime_by_similarity_function(summary, dataset)
         plots.accuracy_vs_runtime_by_cn_selector(summary, dataset)
         plots.accuracy_vs_features_by_threshold(summary, dataset)
-        plots.accuracy_vs_features_by_link_method(summary, dataset)
+        plots.accuracy_vs_features_by_similarity_function(summary, dataset)
         plots.accuracy_vs_features_by_cn_selector(summary, dataset)
+        plots.accuracy_vs_threshold_by_cn_selector(summary, dataset)
         plots.performance_boxplot(summary, dataset, metric="balanced_accuracy")

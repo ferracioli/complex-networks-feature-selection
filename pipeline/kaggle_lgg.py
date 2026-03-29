@@ -67,10 +67,10 @@ def graph_selector(X_train, y_train, params):
         X_train,
         threshold=params["threshold"],
         cn_selector=params["cn_selector"],
-        link_method=params["link"],
+        similarity_function=params["similarity_function"],
         seed_nb=params["seed"],
         save_fig=False,
-        png_path = f"outputs/{params['dataset']}/feature_plots/{params['dataset']}_{params['link']}_{params['threshold']:.2f}_{params['cn_selector']}_radiomic_graph.png",
+        png_path = f"outputs/{params['dataset']}/feature_plots/{params['dataset']}_{params['similarity_function']}_{params['threshold']:.2f}_{params['cn_selector']}_radiomic_graph.png",
     )
 
 def run_complex_network_selector(dataset="radiomics_lgg"):
@@ -95,11 +95,11 @@ def run_complex_network_selector(dataset="radiomics_lgg"):
     y_train = le.fit_transform(df[tg_column])
 
     params = {
-        "threshold": 0.7,
-        "cn_selector": "Label Propagation",
-        "link": "Cosine",
+        "threshold": 0.3,
+        "cn_selector": "Bridging Centrality",
+        "similarity_function": "Cosine",
         "seed": 42,
-        "dataset": dataset
+        "dataset": "radiomics_lgg"
     }
 
     run_model(
@@ -111,4 +111,4 @@ def run_complex_network_selector(dataset="radiomics_lgg"):
         selector_params=params
     )
 
-run_complex_network_selector(dataset="radiomics_lgg")
+run_complex_network_selector()

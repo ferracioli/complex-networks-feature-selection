@@ -1,5 +1,5 @@
 patientID,Mutacion
-test0,1
+test0,0
 test1,1
 test2,1
 test3,1
@@ -28,12 +28,12 @@ test25,1
 test26,1
 test27,1
 test28,1
-test29,0
+test29,1
 test30,1
 test31,1
 test32,1
 test33,1
-test34,0
+test34,1
 test35,1
 test36,1
 test37,1
@@ -42,5 +42,5 @@ test39,1
 test40,1
 test41,1
 test42,1
-test43,0
+test43,1
 test44,1
