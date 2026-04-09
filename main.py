@@ -4,7 +4,7 @@ from pipeline.model_evaluation import model_benchmarking
 def main():
 
     extract_features = False
-    datasets = ["radiomics_lgg", "nsclc", "nsclc_drop_rare_classes", "brats_africa"]
+    datasets = ["radiomics_lgg", "nsclc", "four_class_nsclc", "brats_africa"]
 
     for dataset in datasets:
 

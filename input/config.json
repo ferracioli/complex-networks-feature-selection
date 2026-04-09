@@ -30,9 +30,9 @@
             "gfsir_selector": ["Graph-ConnectedComponents", "Graph-Louvain", "Graph-SpectralClustering"]
         }
     },
-    "nsclc_drop_rare_classes": {
+    "four_class_nsclc": {
         "target_column": "clinical.T.Stage",
-        "output_path": "outputs/nsclc_drop_rare_classes/",
+        "output_path": "outputs/four_class_nsclc/",
         "to_remove_columns": ["PatientName","Age","clinical.T.Stage","Clinical.N.Stage","Clinical.M.Stage","Overall.Stage","Histology","Gender","Survival.time","deadstatus.event","Normalization","binWidth","diagnostics_Versions_PyRadiomics","diagnostics_Versions_Numpy","diagnostics_Versions_SimpleITK","diagnostics_Versions_PyWavelet","diagnostics_Versions_Python","diagnostics_Configuration_Settings","diagnostics_Configuration_EnabledImageTypes","diagnostics_Image-original_Hash","diagnostics_Image-original_Dimensionality","diagnostics_Image-original_Spacing","diagnostics_Image-original_Size","diagnostics_Image-original_Mean","diagnostics_Image-original_Minimum","diagnostics_Image-original_Maximum","diagnostics_Mask-original_Hash","diagnostics_Mask-original_Spacing","diagnostics_Mask-original_Size","diagnostics_Mask-original_BoundingBox","diagnostics_Mask-original_VoxelNum","diagnostics_Mask-original_VolumeNum","diagnostics_Mask-original_CenterOfMassIndex","diagnostics_Mask-original_CenterOfMass"],
         "grid_params": {
             "thresholds": [0.0, 0.15, 0.3, 0.6, 0.65, 0.7, 0.75, 0.8],
