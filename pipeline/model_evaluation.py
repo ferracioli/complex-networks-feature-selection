@@ -1,576 +1,503 @@
-import pandas as pd
-import time
 import itertools
 import json
-import numpy as np
-from sklearn.metrics import accuracy_score, balanced_accuracy_score, roc_auc_score
-from sklearn.preprocessing import StandardScaler
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.preprocessing import LabelEncoder
-from sklearn.feature_selection import mutual_info_classif, RFE
-from sklearn.svm import SVC
-from pipeline.feature_selector import select_cn_centers
-from sklearn.feature_selection import VarianceThreshold
-import pipeline.model_plots as plots
-from sklearn.model_selection import StratifiedKFold
+import os
+import time
 import warnings
-from itertools import combinations
-from sklearn.exceptions import ConvergenceWarning
-from sklearn.feature_selection import f_classif
-from boruta import BorutaPy
+import numpy as np
+import pandas as pd
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.feature_selection import RFE, VarianceThreshold, f_classif, mutual_info_classif
+from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression
+from boruta import BorutaPy
+
+from pipeline.feature_selector import select_cn_centers
 from pipeline.GFSIR.graph_feature_selection import GraphFeatureSelection
-warnings.filterwarnings("ignore", category=ConvergenceWarning)
+import pipeline.model_plots as plots
+import pipeline.model_plots_pt as plots_pt
+from pipeline.nested_cv import nested_cv_evaluation, run_paired_wilcoxon_tests
+
+warnings.filterwarnings("ignore")
 np.random.seed(42)
 
-# Loading the config json
 with open('input/config.json', 'r') as file:
     config = json.load(file)
 
-# Feature stability calculated with Jaccard between folds
-def jaccard(a, b):
-    a, b = set(a), set(b)
-    if len(a | b) == 0:
-        return np.nan
-    return len(a & b) / len(a | b)
-
-def compute_auroc(y_true, y_proba, model):
-    """
-    Computes AUROC for binary or multiclass datasets.
-    Ensures consistency across CV folds by restricting to present classes.
-    """
-    present_classes = np.unique(y_true)
-
-    # AUROC undefined if <2 classes
-    if len(present_classes) < 2:
-        return np.nan
-
-    # Binary dataset
-    if len(present_classes) == 2:
-        pos_idx = list(model.classes_).index(present_classes.max())
-        return roc_auc_score(y_true, y_proba[:, pos_idx])
-
-    # Multiclass: restrict to present classes only
-    mask = np.isin(model.classes_, present_classes)
-
-    return roc_auc_score(
-        y_true,
-        y_proba[:, mask],
-        labels=present_classes,
-        multi_class="ovr",
-        average="macro"
-    )
-
-# Bridge for calling selectors and running models between folds
-def run_eval(model_data, selector_fn, selector_name, selector_params=None, kf=None):
-    print("\nRunning with selector:", selector_name)
-    if selector_params is not None:
-        print(f"Params: {selector_params}")
-    if kf is not None:
-        return evaluate_with_kfold(
-            kf,
-            model_data['X'], model_data['y'],
-            selector_fn=selector_fn,
-            selector_name=selector_name,
-            selector_params=selector_params
-        )
-    else:
-        return evaluate_with_predefined_split(
-            model_data['X_train'], model_data['X_test'], model_data['y_train'], model_data['y_test'],
-            selector_fn=selector_fn,
-            selector_name=selector_name,
-            selector_params=selector_params
-        )
-
-# This module can be used if no kfold approach is available
-def evaluate_with_predefined_split(
-    X_train, X_test, y_train, y_test,
-    selector_fn, selector_name, selector_params=None
-):
-
-    if selector_params is None:
-        selector_params = {}
-    else:
-        selector_params = dict(selector_params)
-    selector_params["seed"] = 42
-    selector_params["save_fig"] = True
-
-    start = time.time()
-
-    if selector_fn is None:
-        selected = X_train.columns.tolist()
-    else:
-        selected = selector_fn(X_train, y_train, selector_params)
-
-    if len(selected) == 0:
-        return None
-
-    runtime = time.time() - start
-    if selector_fn is None:
-        runtime = 0
-
-    model = RandomForestClassifier(
-        n_estimators=200,
-        random_state=42,
-        class_weight="balanced"
-    )
-    model.fit(X_train[selected], y_train)
-    y_pred = model.predict(X_test[selected])
-    y_proba = model.predict_proba(X_test[selected])
-
-    acc = accuracy_score(y_test, y_pred)
-    bal_acc = balanced_accuracy_score(y_test, y_pred)
-    auroc = compute_auroc(y_test, y_proba, model)
-
-    print(f"acc: {acc}, bal_acc: {bal_acc}, auroc: {auroc}")
-    print(f"Runtime: {runtime}, selected features: {len(selected)}")
-    return {
-        "selector": selector_name,
-        "similarity_function": selector_params.get("similarity_function") if selector_params else None,
-        "threshold": selector_params.get("threshold") if selector_params else None,
-        "cn_selector": selector_params.get("cn_selector") if selector_params else None,
-        "gfsir_nfeatures": selector_params.get("gfsir_nfeatures") if selector_params else None,
-        "gfsir_minth": selector_params.get("gfsir_minth") if selector_params else None,
-        "gfsir_maxth": selector_params.get("gfsir_maxth") if selector_params else None,
-        "gfsir_selector": selector_params.get("gfsir_selector") if selector_params else None,
-        "accuracy_mean": acc,
-        "accuracy_std": 0.0,
-        "balanced_accuracy_mean": bal_acc,
-        "balanced_accuracy_std": 0.0,
-        "auroc_mean": auroc,
-        "auroc_std": 0.0,
-        "runtime_mean": runtime,
-        "features_mean": len(selected),
-        "selected_features": selected
-    }
-
-# Select features, run the model and extract metrics
-def evaluate_with_kfold(kf, X, y, selector_fn, selector_name, selector_params=None):
-
-    # Copy the dictionary to avoid misuse out of the function
-    if selector_params is None:
-        selector_params = {}
-    else:
-        selector_params = dict(selector_params)  # defensive copy
-
-    bal_accs = []
-    accs = []
-    runtimes = []
-    selected_features_all = []
-    n_features_all = []
-    aurocs = []
-    selector_params["save_fig"] = True
-
-    for fold, (train_idx, test_idx) in enumerate(kf.split(X, y)):
-        X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
-        y_train, y_test = y[train_idx], y[test_idx]
-
-        start = time.time()
-
-        if selector_fn is None:
-            selected = X.columns.tolist()
-        else:
-            selector_params["seed"] = 42 + fold
-            selected = selector_fn(X_train, y_train, selector_params)
-            selector_params["save_fig"] = False
-            # Only the first fold will generate a plot
-
-        # selected = [f for f in selected if f in X.columns]
-        selected = list(set(selected).intersection(X.columns))
-        if len(selected) == 0:
-            warnings.warn(
-                f"[Fold {fold}] No features selected by {selector_name}. Recording NaNs.",
-                RuntimeWarning
-            )
-            accs.append(np.nan)
-            bal_accs.append(np.nan)
-            aurocs.append(np.nan)
-            runtime = time.time() - start
-            runtimes.append(runtime)
-            selected_features_all.append([])
-            n_features_all.append(0)
-            continue
-
-        runtime = time.time() - start
-
-        model = RandomForestClassifier(
-            n_estimators=200,
-            random_state=42 + fold,
-            class_weight="balanced"
-        )
-        model.fit(X_train[selected], y_train)
-        y_pred = model.predict(X_test[selected])
-        y_proba = model.predict_proba(X_test[selected])
-
-        accs.append(accuracy_score(y_test, y_pred))
-        bal_accs.append(balanced_accuracy_score(y_test, y_pred))
-        aurocs.append(compute_auroc(y_test, y_proba, model))
-        if selector_fn is None:
-            runtimes.append(0)
-        else:
-            runtimes.append(runtime)
-        selected_features_all.append(selected)
-        n_features_all.append(len(selected))
-
-    if len(selected_features_all) > 1:
-        stability = np.nanmean([
-            jaccard(a, b)
-            for a, b in combinations(selected_features_all, 2)
-        ])
-    else:
-        stability = np.nan
-
-    print(f"acc mean: {np.mean(accs)}, bal_acc mean: {np.mean(bal_accs)}, auroc mean: {np.mean(aurocs)}")
-    print(f"Runtime mean: {np.mean(runtimes)}, selected features mean: {int(np.mean(n_features_all))}")
-    return {
-        "selector": selector_name,
-        "similarity_function": selector_params.get("similarity_function") if selector_params else None,
-        "threshold": selector_params.get("threshold") if selector_params else None,
-        "cn_selector": selector_params.get("cn_selector") if selector_params else None,
-        "gfsir_nfeatures": selector_params.get("gfsir_nfeatures") if selector_params else None,
-        "gfsir_minth": selector_params.get("gfsir_minth") if selector_params else None,
-        "gfsir_maxth": selector_params.get("gfsir_maxth") if selector_params else None,
-        "gfsir_selector": selector_params.get("gfsir_selector") if selector_params else None,
-        "accuracy_mean": np.mean(accs),
-        "accuracy_std": np.std(accs),
-        "balanced_accuracy_mean": np.mean(bal_accs),
-        "balanced_accuracy_std": np.std(bal_accs),
-        "auroc_mean": np.mean(aurocs),
-        "auroc_std": np.std(aurocs),
-        "feature_stability": stability,
-        "runtime_mean": np.nanmean(runtimes),
-        "features_mean": np.mean(n_features_all)
-    }
-    # "runtime_mean": np.mean(runtimes),
-
-# included an L1-regularized logistic regression as a sparse linear baseline instead of LASSO
-def l1logistic_selector(X_train, y_train, params=None):
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X_train)
-
-    model = LogisticRegression(
-        penalty="l1",
-        solver="saga",
-        C=1.0,
-        class_weight="balanced",
-        max_iter=5000,
-        random_state=42,
-    )
-    model.fit(X_scaled, y_train)
-
-    coef = np.abs(model.coef_).sum(axis=0)
-    return X_train.columns[coef > 1e-6].tolist()
-
-def mi_selector(X_train, y_train, params=None):
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X_train)
-    scores = mutual_info_classif(X_scaled, y_train, random_state=42)
-    threshold = np.median(scores)
-    return X_train.columns[scores >= threshold].tolist()
+# --- SELECTOR IMPLEMENTATIONS ---
 
 def variance_selector(X_train, y_train, params=None):
-    vt = VarianceThreshold(threshold=1e-5)
+    th = params.get("threshold", 1e-5) if params else 1e-5
+    vt = VarianceThreshold(threshold=th)
     vt.fit(X_train)
     return X_train.columns[vt.get_support()].tolist()
 
-def rfe_selector(X_train, y_train, params=None):
+def anova_selector(X_train, y_train, params=None):
+    percentile = params.get("percentile", 50) if params else 50
+    scores, _ = f_classif(X_train, y_train)
+    scores = np.nan_to_num(scores, nan=0.0)
+    threshold = np.percentile(scores, percentile)
+    return X_train.columns[scores >= threshold].tolist()
+
+def mi_selector(X_train, y_train, params=None):
+    n_neighbors = params.get("n_neighbors", 3) if params else 3
+    percentile = params.get("percentile", 50) if params else 50
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X_train)
+    scores = mutual_info_classif(X_scaled, y_train, n_neighbors=n_neighbors, random_state=42)
+    threshold = np.percentile(scores, percentile)
+    return X_train.columns[scores >= threshold].tolist()
 
-    svc = SVC(kernel="linear", random_state=42)
-    n_features = max(1, int(X_train.shape[1] * 0.5))
+def l1logistic_selector(X_train, y_train, params=None):
+    c_val = params.get("C", 1.0) if params else 1.0
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X_train)
+    model = LogisticRegression(penalty="l1", solver="saga", C=c_val, class_weight="balanced", max_iter=5000, random_state=42)
+    model.fit(X_scaled, y_train)
+    coef = np.abs(model.coef_).sum(axis=0)
+    return X_train.columns[coef > 1e-6].tolist()
 
-    rfe = RFE(
-        estimator=svc,
-        n_features_to_select=n_features
-    )
+def rfe_selector(X_train, y_train, params=None):
+    ratio = params.get("feature_ratio", 0.5) if params else 0.5
+    c_val = params.get("C", 1.0) if params else 1.0
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X_train)
+    svc = SVC(kernel="linear", C=c_val, random_state=42)
+    n_features = max(1, int(X_train.shape[1] * ratio))
+    rfe = RFE(estimator=svc, n_features_to_select=n_features)
     rfe.fit(X_scaled, y_train)
-
     return X_train.columns[rfe.support_].tolist()
 
-def anova_selector(X_train, y_train, params=None):
-    scores, _ = f_classif(X_train, y_train)
-    threshold = np.nanmedian(scores)
-    return X_train.columns[scores >= threshold].tolist()
+def boruta_selector(X_train, y_train, params=None):
+    perc = params.get("perc", 100) if params else 100
+    max_iter = params.get("max_iter", 100) if params else 100
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X_train)
+    rf = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1, class_weight="balanced")
+    boruta = BorutaPy(estimator=rf, n_estimators="auto", perc=perc, max_iter=max_iter, random_state=42, verbose=0)
+    y_array = y_train.values if hasattr(y_train, "values") else y_train
+    boruta.fit(X_scaled, y_array)
+    return X_train.columns[boruta.support_].tolist()
 
 def gfsir_grid(X_train, y_train, params=None):
     assert params is not None
-
-    # You must obtain the GFSIR repository for requesting this selector
     selector = GraphFeatureSelection(
-        input_dir=".",
-        output_dir=".",
-        lower_threshold=params["gfsir_minth"],
-        upper_threshold=params["gfsir_maxth"],
-        n_features=params["gfsir_nfeatures"]
+        input_dir=".", output_dir=".", lower_threshold=params["gfsir_minth"],
+        upper_threshold=params["gfsir_maxth"], n_features=params["gfsir_nfeatures"]
     )
-
-    # Automatic threshold definition
     if params["gfsir_minth"] == "auto":
-        df_selected = selector.apply_graph_feature_selection(
-            X_train.copy(),
-            method=params["gfsir_selector"],
-            mode="adaptive"
-        )
-        return df_selected.columns.tolist()
-
-    # Threshold definition by providing bounds
-    df_selected = selector.apply_graph_feature_selection(
-        X_train.copy(),
-        method=params["gfsir_selector"],
-        mode="manual"
-    )
+        df_selected = selector.apply_graph_feature_selection(X_train.copy(), method=params["gfsir_selector"], mode="adaptive")
+    else:
+        df_selected = selector.apply_graph_feature_selection(X_train.copy(), method=params["gfsir_selector"], mode="manual")
     return df_selected.columns.tolist()
 
-def boruta_selector(X_train, y_train, params=None):
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X_train)
-
-    # Random Forest required by Boruta
-    rf = RandomForestClassifier(
-        n_estimators=200,
-        random_state=42,
-        n_jobs=-1,
-        class_weight="balanced"
-    )
-
-    boruta = BorutaPy(
-        estimator=rf,
-        n_estimators="auto",
-        random_state=42,
-        verbose=0
-    )
-
-    y_array = y_train.values if hasattr(y_train, "values") else y_train
-    boruta.fit(X_scaled, y_array)
-
-    return X_train.columns[boruta.support_].tolist()
-
 def graph_selector(X_train, y_train, params):
-    assert params is not None
     image_filename = f"{params['dataset']}_{params['similarity_function']}_{params['threshold']:.2f}_{params['cn_selector']}_radiomic_graph.png"
     return select_cn_centers(
-        X_train,
-        threshold=params["threshold"],
-        cn_selector=params["cn_selector"],
-        similarity_function=params["similarity_function"],
-        seed_nb=params["seed"],
-        save_fig=params["save_fig"],
-        png_path = f"outputs/{params['dataset']}/feature_plots/{image_filename}",
+        X_train, threshold=params["threshold"], cn_selector=params["cn_selector"],
+        similarity_function=params["similarity_function"], seed_nb=params["seed"],
+        save_fig=params["save_fig"], png_path=f"outputs/{params['dataset']}/feature_plots/{image_filename}"
     )
 
-# Estimative of the best threshold values for a given dataset
-# currently only checking Pearson and Spearman
-def estimate_best_graph_params(X):
-    """
-    Unsupervised estimator of graph parameters.
-    Uses only feature correlations.
-    """
+# --- HELPER FUNCTION FOR EVALUATION RUNS ---
 
-    results = {}
-    print("\n=== Automatic Graph Parameter Estimation ===")
+def run_selector_evaluation(X, y, selector_fn, param_grid, name, outer_splits, return_grid_scores=False):
+    num_combinations = len(param_grid) if param_grid else 1
+    print(f" -> Running {name} ({num_combinations} combination(s))...", flush=True)
+    
+    t0 = time.time()
+    res = nested_cv_evaluation(X, y, selector_fn, param_grid, name, outer_splits=outer_splits, return_grid_scores=return_grid_scores)
+    elapsed = time.time() - t0
+    
+    bal_acc = res.get("balanced_accuracy_mean", np.nan)
+    feats = res.get("features_mean", np.nan)
+    print(f"    Finished {name} in {elapsed:.2f}s | Mean Bal. Acc: {bal_acc:.4f} | Avg Features: {feats:.1f}", flush=True)
+    
+    return res, elapsed, num_combinations
 
-    similarity_functions = ("pearson", "spearman")
-
-    # Find the threshold interval where only 15% of the data survives
-    # this range will have a low amount of correlated features, and will
-    # have a smaller cost comparing with the complete network
-    TARGET_DENSITY = 0.15
-    TH_GRID = np.linspace(0.3, 0.9, 61)
-
-    for similarity_function in similarity_functions:
-        corr = X.corr(method=similarity_function)
-
-        # Upper triangle only
-        upper = corr.where(np.triu(np.ones(corr.shape), k=1).astype(bool))
-        vals = np.abs(upper.values)
-        vals = vals[~np.isnan(vals)]
-        vals = vals[vals < 0.99]  # drop near-duplicate features
-
-        mean_corr = vals.mean()
-        median_corr = np.median(vals)
-
-        densities = np.array([np.mean(vals >= th) for th in TH_GRID])
-        best_idx = np.argmin(np.abs(densities - TARGET_DENSITY))
-        # Forcing networking density to reach 0.15
-
-        base_th = TH_GRID[best_idx]
-        density = densities[best_idx]
-        th_range = (max(0.0, base_th - 0.1), min(1.0, base_th + 0.1))
-
-        results[similarity_function] = {
-            "mean_corr": mean_corr,
-            "median_corr": median_corr,
-            "threshold": base_th,
-            "density": density,
-            "range": th_range
-        }
-
-    # Select best similarity function (balanced density)
-    best_sim = min(
-        results.keys(),
-        key=lambda k: abs(results[k]["density"] - TARGET_DENSITY)
-    )
-
-    best = results[best_sim]
-
-    print("\n=== Recommended Parameters ===")
-    print(f"similarity_function   : {best_sim}")
-    print(f"threshold     : {best['threshold']:.2f}")
-    print(f"density       : {best['density']:.3f}")
-    print(f"threshold_rng : {best['range']}")
-
-    return f"Expected ideal threshold range: {best['threshold']}"
-
-def run_model_with_splits(X_train, X_test, y_train, y_test, description=""):
-    # The baseline model is always Random Forest
-    model = RandomForestClassifier(n_estimators=200, random_state=42,class_weight="balanced")
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
-    acc = accuracy_score(y_test, y_pred)
-    bal_acc = balanced_accuracy_score(y_test, y_pred)
-    print(f"\n=== Results {description} ===")
-    print(f"Accuracy: {acc:.4f}, Bal acc: {bal_acc:.4f}")
-    return acc, bal_acc
+# --- BENCHMARK EXECUTION ---
 
 def model_benchmarking(dataset="sample"):
+    start_total_time = time.time()
+    print("=" * 70)
+    print(f"STARTING BENCHMARK FOR DATASET: '{dataset}'")
+    print("=" * 70, flush=True)
 
-    thresholds = config[dataset]['grid_params']['thresholds']
-    similarity_functions = config[dataset]['grid_params']['similarity_functions']
-    cn_selectors = config[dataset]['grid_params']['cn_selectors']
-    gfsir_nfeatures = config[dataset]['grid_params']['gfsir_nfeatures']
-    gfsir_minth = config[dataset]['grid_params']['gfsir_minth']
-    gfsir_maxth = config[dataset]['grid_params']['gfsir_maxth']
-    gfsir_selector = config[dataset]['grid_params']['gfsir_selector']
-
-    # Loading the original radiomic features
     radiomic_features_path = f"{config[dataset]['output_path']}{dataset}_radiomic_features.csv"
     df = pd.read_csv(radiomic_features_path)
-
-    total_time_start = time.time()
-
-    # Drop columns not related to the features
     tg_column = config[dataset]["target_column"]
-    model_data = {}
-
-    # Remove rows where target (y) is NaN
     df = df.dropna(subset=[tg_column])
 
-    # The NSCLC dataset has a class with only 2 obvervations
-    # A version with all dataset will be used, and also one dropping this class
-    # This was a blocker to a wider CV size
     if "drop_rare_classes" in dataset:
         class_counts = df[tg_column].value_counts()
         valid_classes = class_counts[class_counts >= 5].index
-
-        removed = set(class_counts.index) - set(valid_classes)
-        if len(removed) > 0:
-            print(f"Dropping rare classes: {removed}")
-
         df = df[df[tg_column].isin(valid_classes)]
 
     static_remove = [tg_column, "exam_path", "gt_path", "patient_id"]
     dynamic_remove = config[dataset].get("to_remove_columns", [])
-    columns_to_remove = static_remove + dynamic_remove
-    model_data['X'] = df.drop(columns=columns_to_remove, errors="ignore")
-    
-    le = LabelEncoder() # Converting target from str to nmb (required for NSCLC)
-    y = le.fit_transform(df[tg_column])
-    model_data['y'] = np.asarray(y)
-    use_kfold = True
+    X = df.drop(columns=static_remove + dynamic_remove, errors="ignore")
+    le = LabelEncoder()
+    y = np.asarray(le.fit_transform(df[tg_column]))
 
-    # Storing results to final benchmarking
+    min_class_size = np.min(np.bincount(y))
+    outer_splits = min(5, min_class_size)
+    print(f"Dataset Loaded | Shape: {X.shape} | Outer Splits: {outer_splits}", flush=True)
+
     results = []
+    selector_stats = []
+    grid_cfg = config[dataset]["grid_params"]
 
-    kf = None
-    if use_kfold:
-        # Ensure each CV fold contains all classes (prevents invalid AUROC computation)
-        min_class_size = np.min(np.bincount(y))
-        n_splits = min(5, min_class_size)
+    print("\n--- Running Feature Selectors ---", flush=True)
 
-        kf = StratifiedKFold(
-            n_splits=n_splits,
-            shuffle=True,
-            random_state=42
+    # 1. Vanilla RF Baseline
+    res, elapsed, n_combs = run_selector_evaluation(X, y, None, [{}], "Vanilla RF", outer_splits)
+    results.append(res)
+    selector_stats.append({"Selector": "Vanilla RF", "Combinations": n_combs, "Runtime_Sec": elapsed})
+
+    # 2. DyGraFS
+    dygrafs_grid = [
+        {"dataset": dataset, "threshold": th, "cn_selector": cn, "similarity_function": sim}
+        for sim, th, cn in itertools.product(
+            grid_cfg['similarity_functions'],
+            grid_cfg['thresholds'],
+            grid_cfg['cn_selectors']
         )
-        print(f"Number of folds used: {n_splits}")
-        estimate_best_graph_params(model_data['X'])
-    else:
-        estimate_best_graph_params(model_data['X_train'])
+    ]
+    dygrafs_res, elapsed, n_combs = run_selector_evaluation(
+        X, y, graph_selector, dygrafs_grid, "DyGraFS", outer_splits, return_grid_scores=True
+    )
+    results.append(dygrafs_res)
+    selector_stats.append({"Selector": "DyGraFS", "Combinations": n_combs, "Runtime_Sec": elapsed})
 
-    # GFSIR selector, please, extract it from the author
-    # https://github.com/hmMed22/GFSIR
-    # results.append(run_eval(model_data, gfsir_connected, "GFSIR Connected", kf=kf))
-    # results.append(run_eval(model_data, gfsir_louvain, "GFSIR Louvain", kf=kf))
-    # results.append(run_eval(model_data, gfsir_spectral, "GFSIR Spectral", kf=kf))
-    for nfeatures, minth, maxth, selector in itertools.product(gfsir_nfeatures, gfsir_minth, gfsir_maxth, gfsir_selector):
-   
-        params = {
-            "gfsir_nfeatures": nfeatures,
-            "gfsir_minth": minth,
-            "gfsir_maxth": maxth,
-            "gfsir_selector": selector,
-        }
+    dygrafs_inner_summary = dygrafs_res.pop("inner_grid_summary")
+    os.makedirs(f"outputs/{dataset}", exist_ok=True)
+    dygrafs_inner_summary.to_csv(f"outputs/{dataset}/{dataset}_dygrafs_inner_grid.csv", index=False)
 
-        results.append(run_eval(model_data, gfsir_grid, "GFSIR", selector_params=params, kf=kf))
+    # 3. Classical Selectors (Grids pulled from config.json)
+    
+    # Variance
+    variance_grid = [{"threshold": t} for t in grid_cfg["variance_thresholds"]]
+    res, elapsed, n_combs = run_selector_evaluation(X, y, variance_selector, variance_grid, "Variance", outer_splits)
+    results.append(res)
+    selector_stats.append({"Selector": "Variance", "Combinations": n_combs, "Runtime_Sec": elapsed})
 
-    # Classical Feature Selectors from literature
-    print("\nRunning classical feature selectors...")
-    results.append(run_eval(model_data,  None, "Vanilla RF", kf=kf))
-    results.append(run_eval(model_data, variance_selector, "Variance", kf=kf))
-    results.append(run_eval(model_data, anova_selector, "Anova", kf=kf))
-    results.append(run_eval(model_data, mi_selector, "Mutual Information", kf=kf))
-    results.append(run_eval(model_data, l1logistic_selector, "L1 Logistic Regression", kf=kf))
-    results.append(run_eval(model_data, rfe_selector, "RFE (SVM)", kf=kf))
-    results.append(run_eval(model_data, boruta_selector, "Boruta", kf=kf))
+    # ANOVA
+    anova_grid = [{"percentile": p} for p in grid_cfg["anova_percentiles"]]
+    res, elapsed, n_combs = run_selector_evaluation(X, y, anova_selector, anova_grid, "Anova", outer_splits)
+    results.append(res)
+    selector_stats.append({"Selector": "Anova", "Combinations": n_combs, "Runtime_Sec": elapsed})
 
-    # Checking complex network feature selector with multiple parameters
-    for similarity_function, th, cn, in itertools.product(similarity_functions, thresholds, cn_selectors):
+    # Mutual Information
+    mi_grid = [
+        {"percentile": p, "n_neighbors": k}
+        for p, k in itertools.product(grid_cfg["mi_percentiles"], grid_cfg["mi_n_neighbors"])
+    ]
+    res, elapsed, n_combs = run_selector_evaluation(X, y, mi_selector, mi_grid, "Mutual Information", outer_splits)
+    results.append(res)
+    selector_stats.append({"Selector": "Mutual Information", "Combinations": n_combs, "Runtime_Sec": elapsed})
 
-        params = {
-            "dataset": dataset,
-            "threshold": th,
-            "cn_selector": cn,
-            "similarity_function": similarity_function,
-        }
+    # L1 Logistic Regression
+    l1_grid = [{"C": c} for c in grid_cfg["l1_c"]]
+    res, elapsed, n_combs = run_selector_evaluation(X, y, l1logistic_selector, l1_grid, "L1 Logistic Regression", outer_splits)
+    results.append(res)
+    selector_stats.append({"Selector": "L1 Logistic Regression", "Combinations": n_combs, "Runtime_Sec": elapsed})
 
-        results.append(run_eval(model_data, graph_selector, "DyGraFS", selector_params=params, kf=kf))
+    # RFE (SVM)
+    rfe_grid = [
+        {"feature_ratio": r, "C": c}
+        for r, c in itertools.product(grid_cfg["rfe_ratios"], grid_cfg["rfe_c"])
+    ]
+    res, elapsed, n_combs = run_selector_evaluation(X, y, rfe_selector, rfe_grid, "RFE (SVM)", outer_splits)
+    results.append(res)
+    selector_stats.append({"Selector": "RFE (SVM)", "Combinations": n_combs, "Runtime_Sec": elapsed})
 
+    # Boruta
+    boruta_grid = [
+        {"perc": p, "max_iter": m}
+        for p, m in itertools.product(grid_cfg["boruta_perc"], grid_cfg["boruta_max_iter"])
+    ]
+    res, elapsed, n_combs = run_selector_evaluation(X, y, boruta_selector, boruta_grid, "Boruta", outer_splits)
+    results.append(res)
+    selector_stats.append({"Selector": "Boruta", "Combinations": n_combs, "Runtime_Sec": elapsed})
+
+    # 4. GFSIR Grid
+    gfsir_grid_params = [
+        {"gfsir_nfeatures": nf, "gfsir_minth": minth, "gfsir_maxth": maxth, "gfsir_selector": sel}
+        for nf, minth, maxth, sel in itertools.product(
+            grid_cfg['gfsir_nfeatures'],
+            grid_cfg['gfsir_minth'],
+            grid_cfg['gfsir_maxth'],
+            grid_cfg['gfsir_selector']
+        )
+    ]
+    res, elapsed, n_combs = run_selector_evaluation(X, y, gfsir_grid, gfsir_grid_params, "GFSIR", outer_splits)
+    results.append(res)
+    selector_stats.append({"Selector": "GFSIR", "Combinations": n_combs, "Runtime_Sec": elapsed})
+
+    # Output Summary & Stats
     summary = pd.DataFrame(results)
+    summary = run_paired_wilcoxon_tests(summary)
     summary.to_csv(f"outputs/{dataset}/{dataset}_benchmark_results.csv", index=False)
-    outfile = f"outputs/{dataset}/results_metadata.txt"
 
-    with open(outfile, "a") as f:
+    total_time = time.time() - start_total_time
 
-        elapsed = time.time() - total_time_start
-        hours = int(elapsed // 3600)
-        minutes = int((elapsed % 3600) // 60)
-        seconds = int(elapsed % 60)
+    # Write summary TXT file
+    txt_path = f"outputs/{dataset}/{dataset}_summary.txt"
+    with open(txt_path, "w") as f:
+        f.write("=" * 60 + "\n")
+        f.write(f"BENCHMARK OVERALL SUMMARY: DATASET '{dataset}'\n")
+        f.write("=" * 60 + "\n")
+        f.write(f"Total Execution Time: {total_time:.2f} seconds ({total_time / 60:.2f} minutes)\n")
+        f.write(f"Dataset Dimensions: {X.shape[0]} samples, {X.shape[1]} features\n")
+        f.write(f"Outer CV Splits: {outer_splits}\n\n")
+        
+        f.write("-" * 60 + "\n")
+        f.write(f"{'Selector':<25} | {'Combinations':<12} | {'Time (s)':<10}\n")
+        f.write("-" * 60 + "\n")
+        for stat in selector_stats:
+            f.write(f"{stat['Selector']:<25} | {stat['Combinations']:<12} | {stat['Runtime_Sec']:<10.2f}\n")
+        f.write("-" * 60 + "\n\n")
+        
+        f.write("PERFORMANCE RESULTS:\n")
+        f.write("-" * 60 + "\n")
+        for res_item in results:
+            sel = res_item['selector']
+            acc = res_item['balanced_accuracy_mean']
+            feats = res_item['features_mean']
+            f.write(f"Selector: {sel:<20} | Mean Bal Acc: {acc:.4f} | Avg Features: {feats:.2f}\n")
 
-        f.write(f"Total runtime: {hours}h {minutes}m {seconds}s\n")
-        if use_kfold:
-            f.write(f"Total samples: {model_data['X'].shape[0]}\n")
-        else:
-            f.write(f"Total samples: {model_data['X_train'].shape[0]}\n")
+    print(f"\nSaved run summary text file to: {txt_path}")
+    print(f"TOTAL RUNTIME FOR '{dataset}': {total_time:.2f}s ({total_time / 60:.2f} min)")
+    print("=" * 70, flush=True)
 
-        if kf is not None:
-            f.write(f"CV strategy: {kf.get_n_splits()}-fold StratifiedKFold\n")
+    # --- PLOTTING PIPELINE ---
+    plots.performance_boxplot(summary, dataset, metric="balanced_accuracy")
+    plots.feature_stability_plot(summary, dataset)
+    plots_pt.performance_boxplot_pt(summary, dataset, metric="balanced_accuracy")
 
-        print(f"\nResults saved to {dataset}_benchmark_results.csv\n")
+    if dygrafs_inner_summary is not None and len(dygrafs_inner_summary) > 0:
+        grid_summary_full = pd.concat([summary, dygrafs_inner_summary], ignore_index=True)
+        plots.accuracy_vs_runtime_by_threshold(grid_summary_full, dataset)
+        plots.accuracy_vs_runtime_by_similarity_function(grid_summary_full, dataset)
+        plots.accuracy_vs_runtime_by_cn_selector(grid_summary_full, dataset)
+        plots.accuracy_vs_features_by_threshold(grid_summary_full, dataset)
+        plots.accuracy_vs_features_by_similarity_function(grid_summary_full, dataset)
+        plots.accuracy_vs_features_by_cn_selector(grid_summary_full, dataset)
+        plots.accuracy_vs_threshold_by_cn_selector(grid_summary_full, dataset)
 
-    plots.print_cn_performance_summary(outfile, summary)
+# import itertools
+# import json
+# import warnings
+# import numpy as np
+# import pandas as pd
+# from sklearn.preprocessing import StandardScaler, LabelEncoder
+# from sklearn.ensemble import RandomForestClassifier
+# from sklearn.feature_selection import mutual_info_classif, RFE, VarianceThreshold, f_classif
+# from sklearn.svm import SVC
+# from sklearn.linear_model import LogisticRegression
+# from boruta import BorutaPy
+# from pipeline.feature_selector import select_cn_centers
+# from pipeline.GFSIR.graph_feature_selection import GraphFeatureSelection
+# import pipeline.model_plots as plots
+# import pipeline.model_plots_pt as plots_pt
+# from pipeline.nested_cv import nested_cv_evaluation, run_paired_wilcoxon_tests
 
-    df_plot = summary[
-        (summary["selector"] == "DyGraFS") &
-        (summary["threshold"].notna())
-    ].copy()
+# warnings.filterwarnings("ignore")
+# np.random.seed(42)
 
-    if len(df_plot) > 0:
-        plots.accuracy_vs_runtime_by_threshold(summary, dataset)
-        plots.accuracy_vs_runtime_by_similarity_function(summary, dataset)
-        plots.accuracy_vs_runtime_by_cn_selector(summary, dataset)
-        plots.accuracy_vs_features_by_threshold(summary, dataset)
-        plots.accuracy_vs_features_by_similarity_function(summary, dataset)
-        plots.accuracy_vs_features_by_cn_selector(summary, dataset)
-        plots.accuracy_vs_threshold_by_cn_selector(summary, dataset)
-        plots.performance_boxplot(summary, dataset, metric="balanced_accuracy")
+# with open('input/config.json', 'r') as file:
+#     config = json.load(file)
+
+# # --- SELECTOR IMPLEMENTATIONS ---
+
+# def variance_selector(X_train, y_train, params=None):
+#     th = params.get("threshold", 1e-5) if params else 1e-5
+#     vt = VarianceThreshold(threshold=th)
+#     vt.fit(X_train)
+#     return X_train.columns[vt.get_support()].tolist()
+
+# def anova_selector(X_train, y_train, params=None):
+#     percentile = params.get("percentile", 50) if params else 50
+#     scores, _ = f_classif(X_train, y_train)
+#     scores = np.nan_to_num(scores, nan=0.0)
+#     threshold = np.percentile(scores, percentile)
+#     return X_train.columns[scores >= threshold].tolist()
+
+# def mi_selector(X_train, y_train, params=None):
+#     n_neighbors = params.get("n_neighbors", 3) if params else 3
+#     percentile = params.get("percentile", 50) if params else 50
+#     scaler = StandardScaler()
+#     X_scaled = scaler.fit_transform(X_train)
+#     scores = mutual_info_classif(X_scaled, y_train, n_neighbors=n_neighbors, random_state=42)
+#     threshold = np.percentile(scores, percentile)
+#     return X_train.columns[scores >= threshold].tolist()
+
+# def l1logistic_selector(X_train, y_train, params=None):
+#     c_val = params.get("C", 1.0) if params else 1.0
+#     scaler = StandardScaler()
+#     X_scaled = scaler.fit_transform(X_train)
+#     model = LogisticRegression(penalty="l1", solver="saga", C=c_val, class_weight="balanced", max_iter=5000, random_state=42)
+#     model.fit(X_scaled, y_train)
+#     coef = np.abs(model.coef_).sum(axis=0)
+#     return X_train.columns[coef > 1e-6].tolist()
+
+# def rfe_selector(X_train, y_train, params=None):
+#     ratio = params.get("feature_ratio", 0.5) if params else 0.5
+#     c_val = params.get("C", 1.0) if params else 1.0
+#     scaler = StandardScaler()
+#     X_scaled = scaler.fit_transform(X_train)
+#     svc = SVC(kernel="linear", C=c_val, random_state=42)
+#     n_features = max(1, int(X_train.shape[1] * ratio))
+#     rfe = RFE(estimator=svc, n_features_to_select=n_features)
+#     rfe.fit(X_scaled, y_train)
+#     return X_train.columns[rfe.support_].tolist()
+
+# def boruta_selector(X_train, y_train, params=None):
+#     perc = params.get("perc", 100) if params else 100
+#     max_iter = params.get("max_iter", 100) if params else 100
+#     scaler = StandardScaler()
+#     X_scaled = scaler.fit_transform(X_train)
+#     rf = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1, class_weight="balanced")
+#     boruta = BorutaPy(estimator=rf, n_estimators="auto", perc=perc, max_iter=max_iter, random_state=42, verbose=0)
+#     y_array = y_train.values if hasattr(y_train, "values") else y_train
+#     boruta.fit(X_scaled, y_array)
+#     return X_train.columns[boruta.support_].tolist()
+
+# def gfsir_grid(X_train, y_train, params=None):
+#     assert params is not None
+#     selector = GraphFeatureSelection(
+#         input_dir=".", output_dir=".", lower_threshold=params["gfsir_minth"],
+#         upper_threshold=params["gfsir_maxth"], n_features=params["gfsir_nfeatures"]
+#     )
+#     if params["gfsir_minth"] == "auto":
+#         df_selected = selector.apply_graph_feature_selection(X_train.copy(), method=params["gfsir_selector"], mode="adaptive")
+#     else:
+#         df_selected = selector.apply_graph_feature_selection(X_train.copy(), method=params["gfsir_selector"], mode="manual")
+#     return df_selected.columns.tolist()
+
+# def graph_selector(X_train, y_train, params):
+#     image_filename = f"{params['dataset']}_{params['similarity_function']}_{params['threshold']:.2f}_{params['cn_selector']}_radiomic_graph.png"
+#     return select_cn_centers(
+#         X_train, threshold=params["threshold"], cn_selector=params["cn_selector"],
+#         similarity_function=params["similarity_function"], seed_nb=params["seed"],
+#         save_fig=params["save_fig"], png_path=f"outputs/{params['dataset']}/feature_plots/{image_filename}"
+#     )
+
+# # --- BENCHMARK EXECUTION ---
+
+# def model_benchmarking(dataset="sample"):
+#     radiomic_features_path = f"{config[dataset]['output_path']}{dataset}_radiomic_features.csv"
+#     df = pd.read_csv(radiomic_features_path)
+#     tg_column = config[dataset]["target_column"]
+#     df = df.dropna(subset=[tg_column])
+
+#     if "drop_rare_classes" in dataset:
+#         class_counts = df[tg_column].value_counts()
+#         valid_classes = class_counts[class_counts >= 5].index
+#         df = df[df[tg_column].isin(valid_classes)]
+
+#     static_remove = [tg_column, "exam_path", "gt_path", "patient_id"]
+#     dynamic_remove = config[dataset].get("to_remove_columns", [])
+#     X = df.drop(columns=static_remove + dynamic_remove, errors="ignore")
+#     le = LabelEncoder()
+#     y = np.asarray(le.fit_transform(df[tg_column]))
+
+#     min_class_size = np.min(np.bincount(y))
+#     outer_splits = min(5, min_class_size)
+#     print("Final number of splits:", outer_splits)
+
+#     results = []
+
+#     # 1. Vanilla RF Baseline
+#     results.append(nested_cv_evaluation(X, y, None, [{}], "Vanilla RF", outer_splits=outer_splits))
+
+#     # 2. DyGraFS (Grid Search evaluated via Inner CV & Inner grid score extraction)
+#     dygrafs_grid = [
+#         {"dataset": dataset, "threshold": th, "cn_selector": cn, "similarity_function": sim}
+#         for sim, th, cn in itertools.product(
+#             config[dataset]['grid_params']['similarity_functions'],
+#             config[dataset]['grid_params']['thresholds'],
+#             config[dataset]['grid_params']['cn_selectors']
+#         )
+#     ]
+#     dygrafs_res = nested_cv_evaluation(
+#         X, y, graph_selector, dygrafs_grid, "DyGraFS", outer_splits=outer_splits, return_grid_scores=True
+#     )
+#     results.append(dygrafs_res)
+    
+#     # Save DyGraFS Inner Grid Summary for sensitivity analysis
+#     dygrafs_inner_summary = dygrafs_res.pop("inner_grid_summary")
+#     dygrafs_inner_summary.to_csv(f"outputs/{dataset}/{dataset}_dygrafs_inner_grid.csv", index=False)
+
+#     # 3. Classical Selectors (Grid Search via Inner CV)
+#     variance_grid = [{"threshold": t} for t in [0.0, 1e-5, 1e-4, 1e-3, 1e-2]]
+#     results.append(nested_cv_evaluation(X, y, variance_selector, variance_grid, "Variance", outer_splits=outer_splits))
+
+#     anova_grid = [{"percentile": p} for p in [10, 25, 50, 75, 90]]
+#     results.append(nested_cv_evaluation(X, y, anova_selector, anova_grid, "Anova", outer_splits=outer_splits))
+
+#     mi_grid = [
+#         {"percentile": p, "n_neighbors": k}
+#         for p, k in itertools.product([10, 25, 50, 75, 90], [3, 5, 7])
+#     ]
+#     results.append(nested_cv_evaluation(X, y, mi_selector, mi_grid, "Mutual Information", outer_splits=outer_splits))
+
+#     l1_grid = [{"C": c} for c in [0.001, 0.01, 0.1, 1.0, 10.0, 100.0]]
+#     results.append(nested_cv_evaluation(X, y, l1logistic_selector, l1_grid, "L1 Logistic Regression", outer_splits=outer_splits))
+
+#     rfe_grid = [
+#         {"feature_ratio": r, "C": c}
+#         for r, c in itertools.product([0.1, 0.25, 0.5, 0.75], [0.1, 1.0, 10.0])
+#     ]
+#     results.append(nested_cv_evaluation(X, y, rfe_selector, rfe_grid, "RFE (SVM)", outer_splits=outer_splits))
+
+#     boruta_grid = [
+#         {"perc": p, "max_iter": m}
+#         for p, m in itertools.product([80, 90, 100], [50, 100])
+#     ]
+#     results.append(nested_cv_evaluation(X, y, boruta_selector, boruta_grid, "Boruta", outer_splits=outer_splits))
+
+#     # 4. GFSIR Grid
+#     gfsir_grid_params = [
+#         {"gfsir_nfeatures": nf, "gfsir_minth": minth, "gfsir_maxth": maxth, "gfsir_selector": sel}
+#         for nf, minth, maxth, sel in itertools.product(
+#             config[dataset]['grid_params']['gfsir_nfeatures'],
+#             config[dataset]['grid_params']['gfsir_minth'],
+#             config[dataset]['grid_params']['gfsir_maxth'],
+#             config[dataset]['grid_params']['gfsir_selector']
+#         )
+#     ]
+#     results.append(nested_cv_evaluation(X, y, gfsir_grid, gfsir_grid_params, "GFSIR", outer_splits=outer_splits))
+
+#     summary = pd.DataFrame(results)
+#     summary = run_paired_wilcoxon_tests(summary)
+#     summary.to_csv(f"outputs/{dataset}/{dataset}_benchmark_results.csv", index=False)
+
+#     # --- PLOTTING PIPELINE ---
+    
+#     # 1. Main Unbiased Benchmark Comparisons (Outer Test CV)
+#     plots.performance_boxplot(summary, dataset, metric="balanced_accuracy")
+#     plots.feature_stability_plot(summary, dataset)
+#     plots_pt.performance_boxplot_pt(summary, dataset, metric="balanced_accuracy")
+
+#     # 2. DyGraFS Hyperparameter Sensitivity Plots (Inner CV Scores)
+#     if dygrafs_inner_summary is not None and len(dygrafs_inner_summary) > 0:
+#         # Create full evaluation data frame for sensitivity functions
+#         grid_summary_full = pd.concat([summary, dygrafs_inner_summary], ignore_index=True)
+
+#         plots.accuracy_vs_runtime_by_threshold(grid_summary_full, dataset)
+#         plots.accuracy_vs_runtime_by_similarity_function(grid_summary_full, dataset)
+#         plots.accuracy_vs_runtime_by_cn_selector(grid_summary_full, dataset)
+#         plots.accuracy_vs_features_by_threshold(grid_summary_full, dataset)
+#         plots.accuracy_vs_features_by_similarity_function(grid_summary_full, dataset)
+#         plots.accuracy_vs_features_by_cn_selector(grid_summary_full, dataset)
+#         plots.accuracy_vs_threshold_by_cn_selector(grid_summary_full, dataset)
+
+#         # Portuguese Translations
+#         # plots_pt.accuracy_vs_runtime_by_threshold_pt(grid_summary_full, dataset)
+#         # plots_pt.accuracy_vs_runtime_by_similarity_function_pt(grid_summary_full, dataset)
+#         # plots_pt.accuracy_vs_runtime_by_cn_selector_pt(grid_summary_full, dataset)
+#         # plots_pt.accuracy_vs_features_by_threshold_pt(grid_summary_full, dataset)
+#         # plots_pt.accuracy_vs_features_by_similarity_function_pt(grid_summary_full, dataset)
+#         # plots_pt.accuracy_vs_features_by_cn_selector_pt(grid_summary_full, dataset)
+#         # plots_pt.accuracy_vs_threshold_by_cn_selector_pt(grid_summary_full, dataset)
