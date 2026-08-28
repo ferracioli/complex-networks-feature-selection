@@ -1,3 +1,6 @@
+# For each outer split, the inner loop tests all hyperparameter grid settings on 
+# $K_{inner}$ splits, identifies the single parameter set with the highest inner 
+# mean balanced accuracy, and fits that chosen setting on the outer split.
 import time
 import warnings
 import numpy as np
@@ -100,9 +103,11 @@ def nested_cv_evaluation(X, y, selector_fn, param_grid, selector_name, outer_spl
                     best_param = params
         else:
             best_param = param_grid[0] if param_grid else {}
-
-        if return_grid_scores:
-            grid_scores_matrix.append(fold_grid_scores)
+            if return_grid_scores:
+                fold_grid_scores.append({
+                    "balanced_accuracy_mean": np.nan,
+                    "features_mean": X_train_outer.shape[1] if selector_fn is None else np.nan
+                })
 
         best_params_per_fold.append(best_param)
 
@@ -123,6 +128,8 @@ def nested_cv_evaluation(X, y, selector_fn, param_grid, selector_name, outer_spl
             runtimes.append(runtime)
             selected_features_all.append([])
             n_features_all.append(0)
+            if return_grid_scores:
+                grid_scores_matrix.append(fold_grid_scores)
             continue
 
         clf_outer = RandomForestClassifier(n_estimators=200, random_state=42 + fold, class_weight="balanced")
@@ -136,6 +143,10 @@ def nested_cv_evaluation(X, y, selector_fn, param_grid, selector_name, outer_spl
         runtimes.append(runtime if selector_fn else 0)
         selected_features_all.append(selected_outer)
         n_features_all.append(len(selected_outer))
+
+        # --- FIX: Append fold results to grid_scores_matrix ---
+        if return_grid_scores:
+            grid_scores_matrix.append(fold_grid_scores)
 
     # Feature Stability across Outer Folds
     if len(selected_features_all) > 1:
@@ -155,7 +166,7 @@ def nested_cv_evaluation(X, y, selector_fn, param_grid, selector_name, outer_spl
             p_dict["selector"] = selector_name
             p_dict["balanced_accuracy_mean"] = np.nanmean(accs)
             p_dict["features_mean"] = np.nanmean(feats)
-            p_dict["runtime_mean"] = np.nanmean(runtimes) # Approximate runtimes
+            p_dict["runtime_mean"] = np.nanmean(runtimes)
             inner_summary_list.append(p_dict)
             
         inner_grid_summary = pd.DataFrame(inner_summary_list)
