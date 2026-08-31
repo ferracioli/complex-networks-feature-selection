@@ -2,7 +2,6 @@
 # $K_{inner}$ splits, identifies the single parameter set with the highest inner 
 # mean balanced accuracy, and fits that chosen setting on the outer split.
 import time
-import warnings
 import numpy as np
 import pandas as pd
 from scipy import stats

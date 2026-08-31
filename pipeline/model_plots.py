@@ -212,7 +212,16 @@ def feature_stability_plot(summary, dataset):
     """
     Plots Feature Stability (Jaccard Index across CV folds) per selector.
     """
-    df = summary.copy().sort_values("feature_stability", ascending=False)
+    if "feature_stability" not in summary.columns:
+        print("Warning: 'feature_stability' column not found in summary. Skipping plot.")
+        return
+
+    # Drop entries where feature_stability is NaN
+    df = summary.dropna(subset=["feature_stability"]).copy()
+    if df.empty:
+        return
+
+    df = df.sort_values("feature_stability", ascending=False)
 
     plt.figure(figsize=(10, 6))
     x_positions = np.arange(len(df))
@@ -238,7 +247,6 @@ def feature_stability_plot(summary, dataset):
 
 def accuracy_vs_features_by_similarity_function(summary, dataset):
     df = summary.copy()
-
     fig, axes = plt.subplots(2, 2, figsize=(12, 10), sharex=True, sharey=True)
     axes = axes.flatten()
 
@@ -246,23 +254,17 @@ def accuracy_vs_features_by_similarity_function(summary, dataset):
     non_cn_df = df[df["selector"] != "DyGraFS"]
 
     for ax, similarity_function in zip(axes, SIMILARITY_FUNCTIONS):
+        # Plot all other selectors under one unified label
+        ax.scatter(
+            non_cn_df["features_mean"],
+            non_cn_df["balanced_accuracy_mean"],
+            c="steelblue",
+            s=60,
+            alpha=0.6,
+            label="Other selectors"
+        )
 
-        # Non-CN selectors (independent of Similarity Function)
-        for selector in non_cn_df["selector"].unique():
-            sub_sel = non_cn_df[non_cn_df["selector"] == selector]
-
-            ax.scatter(
-                sub_sel["features_mean"],
-                sub_sel["balanced_accuracy_mean"],
-                c="steelblue",
-                s=60,
-                alpha=0.6,
-                label=selector
-            )
-
-        # CN selectors for this Similarity Function
         cn_similarity_function = cn_df[cn_df["similarity_function"] == similarity_function]
-
         ax.scatter(
             cn_similarity_function["features_mean"],
             cn_similarity_function["balanced_accuracy_mean"],
@@ -273,7 +275,6 @@ def accuracy_vs_features_by_similarity_function(summary, dataset):
             linewidth=0.5,
             label="DyGraFS"
         )
-
         ax.set_title(f"Similarity Function: {similarity_function}")
         ax.grid(alpha=0.3)
 
@@ -282,16 +283,13 @@ def accuracy_vs_features_by_similarity_function(summary, dataset):
     axes[2].set_xlabel("Mean Number of Selected Features")
     axes[3].set_xlabel("Mean Number of Selected Features")
 
-    # De-duplicate legend
     handles, labels = axes[0].get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
-    fig.legend(by_label.values(), by_label.keys(), loc="upper center", ncol=4)
+    fig.legend(by_label.values(), by_label.keys(), loc="upper center", ncol=2)
 
     fig.suptitle(f"{dataset}: Accuracy vs Features by Similarity Function", fontsize=14)
     fig.tight_layout(rect=[0, 0, 1, 0.93])
-
-    out_path = f"outputs/{dataset}/{dataset}_accuracy_vs_features_by_similarity_function.png"
-    plt.savefig(out_path, dpi=300)
+    plt.savefig(f"outputs/{dataset}/{dataset}_accuracy_vs_features_by_similarity_function.png", dpi=300)
     plt.close()
 
 def accuracy_vs_features_by_threshold(summary, dataset):
@@ -478,32 +476,33 @@ def print_cn_performance_summary(outfile, summary):
         f.write(table + "\n")
         f.write(footer)
 
+# pipeline/model_plots.py
+
 def accuracy_vs_threshold_by_cn_selector(summary, dataset):
     """
     Generates 4 subplots (one for each CN selector) showing 
-    Balanced Accuracy vs. Threshold.
+    Balanced Accuracy vs. Threshold, replicating 'Other selectors' in every subplot.
     """
     df = summary.copy()
 
-    # Create the 2x2 grid
     fig, axes = plt.subplots(2, 2, figsize=(12, 10), sharex=True, sharey=True)
     axes = axes.flatten()
 
-    # Iterate through selectors (assuming CN_SELECTORS is a predefined list of 4)
-    for ax, cn_sel in zip(axes, sorted(CN_SELECTORS)):
+    # Pre-extract non-DyGraFS selectors once
+    non_cn = df[~df["cn_selector"].isin(CN_SELECTORS)]
 
-        # 1. Plot "Other selectors" as background reference (Steelblue)
-        non_cn = df[~df["cn_selector"].isin(CN_SELECTORS)]
+    for ax, cn_sel in zip(axes, sorted(CN_SELECTORS)):
+        # 1. Plot "Other selectors" identically in all subplots
         ax.scatter(
             non_cn["threshold"],
             non_cn["balanced_accuracy_mean"],
             c="steelblue",
             s=60,
-            alpha=0.4, # Slightly more transparent to emphasize the target
+            alpha=0.4,
             label="Other selectors"
         )
 
-        # 2. Plot the specific CN selector for this subplot (Orange)
+        # 2. Plot specific DyGraFS CN selector for this subplot
         cn = df[df["cn_selector"] == cn_sel]
         ax.scatter(
             cn["threshold"],
@@ -519,21 +518,17 @@ def accuracy_vs_threshold_by_cn_selector(summary, dataset):
         ax.set_title(f"CN selector: {cn_sel}")
         ax.grid(alpha=0.3)
 
-    # Add axis labels to the outer plots
     axes[0].set_ylabel("Balanced Accuracy (mean)")
     axes[2].set_ylabel("Balanced Accuracy (mean)")
     axes[2].set_xlabel("Threshold")
     axes[3].set_xlabel("Threshold")
 
-    # Handle the Legend
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="upper center", ncol=2)
 
-    # Main Title and Layout
     fig.suptitle(f"{dataset}: Accuracy vs. Threshold by CN Selector", fontsize=14)
     fig.tight_layout(rect=[0, 0, 1, 0.95])
 
-    # Save the output
     out_path = f"outputs/{dataset}/{dataset}_accuracy_vs_threshold_by_cn_selector.png"
     plt.savefig(out_path, dpi=300)
     plt.close()
