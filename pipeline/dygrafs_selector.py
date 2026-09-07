@@ -5,22 +5,18 @@ import networkx as nx
 import numpy as np
 import os
 import pandas as pd
-from sklearn.feature_selection import VarianceThreshold
+from sklearn.feature_selection import VarianceThreshold, f_classif
 from sklearn.metrics.pairwise import cosine_similarity
 from scipy.stats import spearmanr
 np.random.seed(42)
 
-# # Loading the config json
+# Loading the config json
 with open('input/config.json', 'r') as file:
     config = json.load(file)
 
-def generate_network(
-    df,
-    threshold=0.7,
-    similarity_function="cosine",
-):
+def generate_network(df, threshold=0.7, similarity_function="cosine"):
     """
-    Function that generates a complex network based on the input dataframe and similarity function
+    Generates a complex network based on the input dataframe and similarity function
     
     Args:
         df (radiomic DataFrame):
@@ -55,7 +51,7 @@ def generate_network(
     feature_vectors = (feature_vectors - feature_vectors.mean(axis=1, keepdims=True)) / \
                       (feature_vectors.std(axis=1, keepdims=True) + 1e-8)
 
-    # Compute similarity
+    # Compute similarity based on the selected param
     if similarity_function == "Cosine":
         similarity_matrix = cosine_similarity(feature_vectors)
 
@@ -77,7 +73,7 @@ def generate_network(
     else:
         raise ValueError(f"Invalid similarity_function: {similarity_function}")
 
-    # Build graph
+    # Building  the graph
     G = nx.Graph()
     for feat in feature_names:
         G.add_node(feat)
@@ -99,7 +95,7 @@ def generate_network(
 def select_cn_centers(
     df,
     threshold=0.7,
-    png_path="radiomic_graph.png",
+    png_path="folder_name",
     cn_selector="Label Propagation", 
     similarity_function="Spearman",
     seed_nb=42,
@@ -147,7 +143,9 @@ def select_cn_centers(
             # Degree centrality (linear-time, local)
             degrees = dict(sub.degree())
 
-            # Select most connected node inside the community
+            # Select the community representative (degree + relevance to y when available)
+            # center = _select_relevance_aware_center(sub, df, y, degrees)
+            # original:
             center = max(degrees, key=degrees.get)
             centers.append(center)
 
@@ -175,7 +173,8 @@ def select_cn_centers(
             # Degree centrality (linear-time, local)
             degrees = dict(sub.degree())
 
-            # Select most connected node inside the community
+            # Select the community representative (degree + relevance to y when available)
+            # center = _select_relevance_aware_center(sub, df, y, degrees)
             center = max(degrees, key=degrees.get)
             centers.append(center)
 
@@ -236,23 +235,45 @@ def select_cn_centers(
         raise ValueError("Error: invalid method.")
 
     if save_fig:
-        plt.figure(figsize=(12, 10))
-        pos = nx.spring_layout(G, seed=seed_nb)
-
-        node_colors = ["red" if n in centers else "skyblue" for n in G.nodes()]
-        nx.draw_networkx_nodes(G, pos, node_color=node_colors, node_size=700)
-        nx.draw_networkx_edges(G, pos, alpha=0.6)
-
-        # Only label selected (red) nodes
-        red_labels = {n: n for n in centers if n in G.nodes()}
-        nx.draw_networkx_labels(G, pos, labels=red_labels, font_size=8)
-
-        plt.title(f"Radiomic Graph / Method: {cn_selector}", fontsize=14)
-        plt.axis("off")
-        plt.tight_layout()
-        os.makedirs(os.path.dirname(png_path), exist_ok=True)
-
-        plt.savefig(png_path, dpi=120)
-        plt.close()
+        png_name = f"{str(threshold).replace('.', '')}_{similarity_function}_{cn_selector}_radiomic_graph.png"
+        _save_graph_snapshot(G, centers, png_path, png_name.lower(), threshold, similarity_function, cn_selector, seed_nb)
 
     return centers
+
+
+def _save_graph_snapshot(G, centers, png_path, png_file, threshold, similarity_function, cn_selector, seed_nb, dpi=70, figsize=(6, 5)):
+    """
+    Renders a low-resolution PNG of the full correlation graph with the
+    selected community-center features highlighted in red (all other nodes in
+    blue), so a run's parameter combination can be inspected visually. The
+    parameter combination is expected to already be encoded in `png_path` by
+    the caller (see `graph_selector` / `generate_dygrafs_diagnostic_plots`).
+
+    Kept deliberately low-res (small figsize, dpi=70, no per-node labels,
+    since with hundreds of radiomic features labels are unreadable anyway) so
+    this is cheap enough to generate for every parameter combination tested,
+    not just the single winning one.
+
+    If a PNG already exists at `png_path`, generation is skipped: the same
+    parameter combination is evaluated many times across CV folds/inner
+    splits, and one representative snapshot per combination is the goal here,
+    not one per fold.
+    """
+    file_path = f"{png_path}{png_file}"
+
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+
+    plt.figure(figsize=figsize)
+    pos = nx.spring_layout(G, seed=seed_nb)
+
+    node_colors = ["red" if n in centers else "skyblue" for n in G.nodes()]
+    node_size = 40 if G.number_of_nodes() > 150 else 80
+    nx.draw_networkx_nodes(G, pos, node_color=node_colors, node_size=node_size)
+    nx.draw_networkx_edges(G, pos, alpha=0.4, width=0.5)
+
+    plt.title(f"Threshold: {threshold} | Similarity function: {similarity_function} | Method: {cn_selector}\nnodes={G.number_of_nodes()} | selected={len(centers)}", fontsize=9)
+    plt.axis("off")
+    plt.tight_layout()
+
+    plt.savefig(file_path, dpi=dpi)
+    plt.close()

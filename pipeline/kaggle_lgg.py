@@ -2,7 +2,7 @@ import pandas as pd
 import json
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import LabelEncoder
-from feature_selector import select_cn_centers
+from dygrafs_selector import select_cn_centers
 import warnings
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.metrics import accuracy_score
@@ -61,7 +61,7 @@ def run_model(X_train, y_train, X_test, patient_ids, selector_fn, selector_param
     print("kaggle_prediction.csv generated.")
 
 
-def graph_selector(X_train, y_train, params):
+def dygrafs_selector(X_train, y_train, params):
     assert params is not None
     return select_cn_centers(
         X_train,
@@ -107,7 +107,7 @@ def run_complex_network_selector(dataset="radiomics_lgg"):
         y_train,
         X_test,
         df_test["patientID"],
-        selector_fn=graph_selector,
+        selector_fn=dygrafs_selector,
         selector_params=params
     )
 

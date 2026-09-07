@@ -9,7 +9,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import LabelEncoder
 from sklearn.feature_selection import mutual_info_classif, RFE
 from sklearn.svm import SVC
-from pipeline.feature_selector import select_cn_centers
+from pipeline.dygrafs_selector import select_cn_centers
 from sklearn.feature_selection import VarianceThreshold
 import pipeline.model_plots as plots
 import pipeline.model_plots_pt as plots_pt
@@ -347,7 +347,7 @@ def boruta_selector(X_train, y_train, params=None):
 
     return X_train.columns[boruta.support_].tolist()
 
-def graph_selector(X_train, y_train, params):
+def dygrafs_selector(X_train, y_train, params):
     assert params is not None
     image_filename = f"{params['dataset']}_{params['similarity_function']}_{params['threshold']:.2f}_{params['cn_selector']}_radiomic_graph.png"
     return select_cn_centers(
@@ -535,7 +535,7 @@ def model_benchmarking(dataset="sample"):
             "similarity_function": similarity_function,
         }
 
-        results.append(run_eval(model_data, graph_selector, "DyGraFS", selector_params=params, kf=kf))
+        results.append(run_eval(model_data, dygrafs_selector, "DyGraFS", selector_params=params, kf=kf))
 
     summary = pd.DataFrame(results)
     summary.to_csv(f"outputs/{dataset}/{dataset}_benchmark_results.csv", index=False)

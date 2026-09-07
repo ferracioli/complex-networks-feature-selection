@@ -12,20 +12,20 @@ from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression
 from boruta import BorutaPy
 
-from pipeline.feature_selector import select_cn_centers
+from pipeline.dygrafs_selector import select_cn_centers #, generate_dygrafs_diagnostic_plots
 from pipeline.GFSIR.graph_feature_selection import GraphFeatureSelection
 import pipeline.model_plots as plots
 import pipeline.model_plots_pt as plots_pt
-from pipeline.nested_cv import nested_cv_evaluation, run_paired_wilcoxon_tests
+from pipeline.nested_cv import nested_cv_evaluation, run_paired_wilcoxon_tests, run_pairwise_wilcoxon_tests
 
 warnings.filterwarnings("ignore")
 np.random.seed(42)
+VERBOSE = True # Tracing variable to enable logs
 
 with open('input/config.json', 'r') as file:
     config = json.load(file)
 
-# --- SELECTOR IMPLEMENTATIONS ---
-
+# Loading all selectors with their respective params
 def variance_selector(X_train, y_train, params=None):
     th = params.get("threshold", 1e-5) if params else 1e-5
     vt = VarianceThreshold(threshold=th)
@@ -74,7 +74,6 @@ def boruta_selector(X_train, y_train, params=None):
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X_train)
 
-    # FIX: Change n_jobs=-1 to n_jobs=1 to prevent Windows thread deadlocks
     rf = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=1, class_weight="balanced")
     boruta = BorutaPy(estimator=rf, n_estimators="auto", perc=perc, max_iter=max_iter, random_state=42, verbose=0)
 
@@ -94,74 +93,51 @@ def gfsir_grid(X_train, y_train, params=None):
         df_selected = selector.apply_graph_feature_selection(X_train.copy(), method=params["gfsir_selector"], mode="manual")
     return df_selected.columns.tolist()
 
-def graph_selector(X_train, y_train, params):
-    image_filename = f"{params['dataset']}_{params['similarity_function']}_{params['threshold']:.2f}_{params['cn_selector']}_radiomic_graph.png"
+def dygrafs_selector(X_train, y_train, params):
     return select_cn_centers(
         X_train, threshold=params["threshold"], cn_selector=params["cn_selector"],
         similarity_function=params["similarity_function"], seed_nb=params["seed"],
-        save_fig=params["save_fig"], png_path=f"outputs/{params['dataset']}/feature_plots/{image_filename}"
+        save_fig=params["save_fig"], png_path=f"outputs/{params['dataset']}/feature_plots/{params['dataset']}_",
     )
 
-def format_param_string(df_grid):
-    """
-    Transforms explicit parameter columns into a single dynamic 'params' string column.
-    """
-    if df_grid is None or len(df_grid) == 0:
-        return df_grid
-
-    # Standard metrics and keys to exclude from the params string
-    meta_cols = ["selector", "balanced_accuracy_mean", "features_mean", "runtime_mean", "dataset"]
-    param_cols = [c for c in df_grid.columns if c not in meta_cols]
-
-    def _row_to_string(row):
-        parts = []
-        for col in param_cols:
-            val = row[col]
-            if pd.notna(val) and val is not None:
-                parts.append(f"{col} = {val}")
-        return ", ".join(parts) if parts else "default"
-
-    df_grid["params"] = df_grid.apply(_row_to_string, axis=1)
-    
-    # Reorder columns to place selector, params, and metrics first
-    first_cols = ["selector", "params", "balanced_accuracy_mean", "features_mean"]
-    existing_first = [c for c in first_cols if c in df_grid.columns]
-    other_cols = [c for c in df_grid.columns if c not in existing_first]
-    
-    return df_grid[existing_first + other_cols]
-
+# Evaluates the dataset for a given model
 def run_selector_evaluation(X, y, selector_fn, param_grid, name, outer_splits, return_grid_scores=True):
+
+    # Additional information to track the evaluation status
     num_combinations = len(param_grid) if param_grid else 1
-    print(f" -> Running {name} ({num_combinations} combination(s))...", flush=True)
+    if VERBOSE:
+        print(f" -> Running {name} (contains {num_combinations} combinations)", flush=True)
     
-    t0 = time.time()
     res = nested_cv_evaluation(X, y, selector_fn, param_grid, name, outer_splits=outer_splits, return_grid_scores=return_grid_scores)
-    elapsed = time.time() - t0
-    print("Output from the nested_cv_evaluation")
-    print(res)
     
     bal_acc = res.get("balanced_accuracy_mean", np.nan)
     feats = res.get("features_mean", np.nan)
-    print(f"    Finished {name} in {elapsed:.2f}s | Mean Bal. Acc: {bal_acc:.4f} | Avg Features: {feats:.1f}", flush=True)
-    
-    return res, elapsed, num_combinations
+    if VERBOSE:
+        print("Output from the nested_cv_evaluation")
+        print(f"    Finished {name} in average {res['runtime_mean']:.2f}s | Mean Bal. Acc: {bal_acc:.4f} | Avg Features: {feats:.1f}", flush=True)
+
+    # Elapsed time across the mean of outer CVs 
+    return res, res["runtime_mean"], num_combinations
 
 def model_benchmarking(dataset="sample"):
     start_total_time = time.time()
-    print("=" * 70)
-    print(f"STARTING BENCHMARK FOR DATASET: '{dataset}'")
-    print("=" * 70, flush=True)
+    if VERBOSE:
+        print(f"Benchmarking dataset: '{dataset}'")
+        print("=" * 70, flush=True)
 
     radiomic_features_path = f"{config[dataset]['output_path']}{dataset}_radiomic_features.csv"
     df = pd.read_csv(radiomic_features_path)
     tg_column = config[dataset]["target_column"]
     df = df.dropna(subset=[tg_column])
 
-    if "drop_rare_classes" in dataset:
+    # Failsafe to ensure that NSCLC will not include the T5 class
+    # (dataset mislabeled class with only 2 records)
+    if "four_class_nsclc" in dataset:
         class_counts = df[tg_column].value_counts()
         valid_classes = class_counts[class_counts >= 5].index
         df = df[df[tg_column].isin(valid_classes)]
 
+    # Removing undesired features based on static columns and flagged features from the config.json
     static_remove = [tg_column, "exam_path", "gt_path", "patient_id"]
     dynamic_remove = config[dataset].get("to_remove_columns", [])
     X = df.drop(columns=static_remove + dynamic_remove, errors="ignore")
@@ -170,14 +146,15 @@ def model_benchmarking(dataset="sample"):
 
     min_class_size = np.min(np.bincount(y))
     outer_splits = min(5, min_class_size)
-    print(f"Dataset Loaded | Shape: {X.shape} | Outer Splits: {outer_splits}", flush=True)
+    if VERBOSE:
+        print(f"Dataset Loaded | Shape: {X.shape} | Outer Splits: {outer_splits}", flush=True)
+        print("\n--- Running Feature Selectors ---", flush=True)
 
+    # Refreshs the benchmark for the next dataset evaluated
     results = []
     selector_stats = []
     all_grid_summaries = []
     grid_cfg = config["grid_params"]
-
-    print("\n--- Running Feature Selectors ---", flush=True)
 
     # 1. Vanilla RF Baseline (No grid search, set return_grid_scores=False)
     res, elapsed, n_combs = run_selector_evaluation(X, y, None, [{}], "Vanilla RF", outer_splits, return_grid_scores=False)
@@ -195,7 +172,7 @@ def model_benchmarking(dataset="sample"):
         )
     ]
     dygrafs_res, elapsed, n_combs = run_selector_evaluation(
-        X, y, graph_selector, dygrafs_grid, "DyGraFS", outer_splits, return_grid_scores=True
+        X, y, dygrafs_selector, dygrafs_grid, "DyGraFS", outer_splits, return_grid_scores=True
     )
     results.append(dygrafs_res)
     selector_stats.append({"Selector": "DyGraFS", "Combinations": n_combs, "Runtime_Sec": elapsed})
@@ -204,6 +181,7 @@ def model_benchmarking(dataset="sample"):
     dygrafs_inner_summary = dygrafs_res.pop("inner_grid_summary")
     os.makedirs(f"outputs/{dataset}", exist_ok=True)
     dygrafs_inner_summary.to_csv(f"outputs/{dataset}/{dataset}_dygrafs_inner_grid.csv", index=False)
+    # Inner grid summaries is destined to understand the impact of parameters internally on DuGraFS
     all_grid_summaries.append(dygrafs_inner_summary)
 
     # 3. Classical Selectors
@@ -273,50 +251,29 @@ def model_benchmarking(dataset="sample"):
     all_grid_summaries.append(res.pop("inner_grid_summary", None))
     selector_stats.append({"Selector": "GFSIR", "Combinations": n_combs, "Runtime_Sec": elapsed})
 
-    # --- SAVE SUMMARY & WILCOXON RESULTS ---
+    # Storing the summary and stat tests
     summary = pd.DataFrame(results)
     summary = run_paired_wilcoxon_tests(summary)
-    # Contains unbiased outer-CV evaluation metrics produced using nested CV.
-    # It is the source of truth
+    # Contains unbiased outer-CV evaluation metrics produced using nested CV
     summary.to_csv(f"outputs/{dataset}/{dataset}_benchmark_results.csv", index=False)
 
     total_time = time.time() - start_total_time
 
-    # --- BUILD & SAVE DYNAMIC HYPERPARAMETER RANKING CSV ---
-    valid_summaries = [s for s in all_grid_summaries if s is not None and len(s) > 0]
-    if valid_summaries:
-        full_ranking_df = pd.concat(valid_summaries, ignore_index=True)
-        
-        # Apply parameter collapsing logic
-        full_ranking_df = format_param_string(full_ranking_df)
-        
-        # Keep clean, standard output columns
-        export_cols = ["selector", "params", "balanced_accuracy_mean", "features_mean"]
-        ranking_csv_df = full_ranking_df[export_cols].sort_values(by="balanced_accuracy_mean", ascending=False)
-        
-        ranking_path = f"outputs/{dataset}/{dataset}_benchmark_ranking.csv"
-        # Contains inner-CV grid search results across parameter grids.
-        ranking_csv_df.to_csv(ranking_path, index=False)
-        print(f"\nSaved overall hyperparameter ranking to: {ranking_path}")
-
-    # --- WRITE SUMMARY TXT FILE ---
     txt_path = f"outputs/{dataset}/{dataset}_summary.txt"
     with open(txt_path, "w") as f:
-        f.write("=" * 60 + "\n")
-        f.write(f"BENCHMARK OVERALL SUMMARY: DATASET '{dataset}'\n")
-        f.write("=" * 60 + "\n")
+        f.write(f"Benchmark summary for '{dataset}'\n")
         f.write(f"Total Execution Time: {total_time:.2f} seconds ({total_time / 60:.2f} minutes)\n")
         f.write(f"Dataset Dimensions: {X.shape[0]} samples, {X.shape[1]} features\n")
         f.write(f"Outer CV Splits: {outer_splits}\n\n")
         
         f.write("-" * 60 + "\n")
-        f.write(f"{'Selector':<25} | {'Combinations':<12} | {'Time (s)':<10}\n")
+        f.write(f"{'Selector':<25} | {'Combinations':<12} | {'Average selector runtime (s)':<10}\n")
         f.write("-" * 60 + "\n")
         for stat in selector_stats:
             f.write(f"{stat['Selector']:<25} | {stat['Combinations']:<12} | {stat['Runtime_Sec']:<10.2f}\n")
         f.write("-" * 60 + "\n\n")
         
-        f.write("PERFORMANCE RESULTS:\n")
+        f.write("Performance results:\n")
         f.write("-" * 60 + "\n")
         for res_item in results:
             sel = res_item['selector']
@@ -325,22 +282,42 @@ def model_benchmarking(dataset="sample"):
             f.write(f"Selector: {sel:<20} | Mean Bal Acc: {acc:.4f} | Avg Features: {feats:.2f}\n")
 
     print(f"Saved run summary text file to: {txt_path}")
-    print(f"TOTAL RUNTIME FOR '{dataset}': {total_time:.2f}s ({total_time / 60:.2f} min)")
-    print("=" * 70, flush=True)
+    print(f"Total runtime for '{dataset}': {total_time:.2f}s ({total_time / 60:.2f} min)")
 
-    # --- PLOTTING PIPELINE ---
+    # Storing png plots
     plots.performance_boxplot(summary, dataset, metric="balanced_accuracy")
+    plots_pt.performance_boxplot(summary, dataset, metric="balanced_accuracy")
     plots.feature_stability_plot(summary, dataset)
-    plots_pt.performance_boxplot_pt(summary, dataset, metric="balanced_accuracy")
+    plots_pt.feature_stability_plot(summary, dataset)
+    plots.save_feature_selection_frequency(results, f"outputs/{dataset}", dataset)
+    plots.save_overleaf_benchmark_table(summary, f"outputs/{dataset}/{dataset}_benchmark_overleaf.txt", ranking_metric="balanced_accuracy_mean")
 
     if dygrafs_inner_summary is not None and len(dygrafs_inner_summary) > 0:
         # Combine summary with dygrafs_inner_summary safely for comparison plots
         grid_summary_full = pd.concat([summary, dygrafs_inner_summary], ignore_index=True)
-        
+
+        # DyGraFS inner summary is destined to evaluate internal DyGraFS params
+        # It must not be used as comparison to other feature selectors
+        plots.dygrafs_param_heatmap(dygrafs_inner_summary, dataset)
+        plots_pt.dygrafs_param_heatmap(dygrafs_inner_summary, dataset)
+
         plots.accuracy_vs_runtime_by_threshold(grid_summary_full, dataset)
+        plots_pt.accuracy_vs_runtime_by_threshold(grid_summary_full, dataset)
+
         plots.accuracy_vs_runtime_by_similarity_function(grid_summary_full, dataset)
+        plots_pt.accuracy_vs_runtime_by_similarity_function(grid_summary_full, dataset)
+
         plots.accuracy_vs_runtime_by_cn_selector(grid_summary_full, dataset)
+        plots_pt.accuracy_vs_runtime_by_cn_selector(grid_summary_full, dataset)
+
         plots.accuracy_vs_features_by_threshold(grid_summary_full, dataset)
+        plots_pt.accuracy_vs_features_by_threshold(grid_summary_full, dataset)
+
         plots.accuracy_vs_features_by_similarity_function(grid_summary_full, dataset)
+        plots_pt.accuracy_vs_features_by_similarity_function(grid_summary_full, dataset)
+
         plots.accuracy_vs_features_by_cn_selector(grid_summary_full, dataset)
+        plots_pt.accuracy_vs_features_by_cn_selector(grid_summary_full, dataset)
+
         plots.accuracy_vs_threshold_by_cn_selector(grid_summary_full, dataset)
+        plots_pt.accuracy_vs_threshold_by_cn_selector(grid_summary_full, dataset)
