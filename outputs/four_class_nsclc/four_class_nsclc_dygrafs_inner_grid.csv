@@ -1,0 +1,81 @@
+dataset,threshold,cn_selector,similarity_function,selector,balanced_accuracy_mean,features_mean,runtime_mean
+four_class_nsclc,0.0,Label Propagation,Cosine,DyGraFS,0.313587332808812,1.7333333333333332,4.475559997558594
+four_class_nsclc,0.0,Bridging Centrality,Cosine,DyGraFS,0.4408561422077354,266.1333333333333,81.37654938697816
+four_class_nsclc,0.0,Louvain,Cosine,DyGraFS,0.3742018767249884,3.8666666666666663,8.363216892878215
+four_class_nsclc,0.0,Structural Diversity,Cosine,DyGraFS,0.36986336686523547,4.066666666666667,4.805000352859497
+four_class_nsclc,0.25,Label Propagation,Cosine,DyGraFS,0.3850448801406217,7.2,2.789074754714966
+four_class_nsclc,0.25,Bridging Centrality,Cosine,DyGraFS,0.4493479715384712,266.26666666666665,45.3386304060618
+four_class_nsclc,0.25,Louvain,Cosine,DyGraFS,0.4048149852322256,8.4,4.499405034383138
+four_class_nsclc,0.25,Structural Diversity,Cosine,DyGraFS,0.43776000415246086,38.2,2.9025839805603026
+four_class_nsclc,0.5,Label Propagation,Cosine,DyGraFS,0.418235848850424,39.06666666666667,2.0351322809855144
+four_class_nsclc,0.5,Bridging Centrality,Cosine,DyGraFS,0.4493028525532951,266.59999999999997,23.410935227076216
+four_class_nsclc,0.5,Louvain,Cosine,DyGraFS,0.4089281967704469,32.53333333333334,2.8696406205495197
+four_class_nsclc,0.5,Structural Diversity,Cosine,DyGraFS,0.4473914927628539,82.46666666666667,2.054566351572672
+four_class_nsclc,0.75,Label Propagation,Cosine,DyGraFS,0.45348545702046883,127.86666666666667,1.5360122044881186
+four_class_nsclc,0.75,Bridging Centrality,Cosine,DyGraFS,0.44753291917999827,267.3333333333333,8.701501146952312
+four_class_nsclc,0.75,Louvain,Cosine,DyGraFS,0.43704382485357113,111.73333333333332,1.8942373434702553
+four_class_nsclc,0.75,Structural Diversity,Cosine,DyGraFS,0.4454909488841432,105.53333333333335,1.5472002983093263
+four_class_nsclc,0.9,Label Propagation,Cosine,DyGraFS,0.4557540962621608,262.0666666666667,1.3851613203684487
+four_class_nsclc,0.9,Bridging Centrality,Cosine,DyGraFS,0.42984860143244286,271.7333333333333,2.349724531173706
+four_class_nsclc,0.9,Louvain,Cosine,DyGraFS,0.4491417792202115,248.2,1.5201141516367596
+four_class_nsclc,0.9,Structural Diversity,Cosine,DyGraFS,0.46414029854008226,105.53333333333335,1.3713668982187905
+four_class_nsclc,0.0,Label Propagation,Spearman,DyGraFS,0.2455280189639454,1.0,7.769621960322063
+four_class_nsclc,0.0,Bridging Centrality,Spearman,DyGraFS,0.444489098229116,1058.4666666666667,111.84048568407692
+four_class_nsclc,0.0,Louvain,Spearman,DyGraFS,0.397377182383575,3.5333333333333337,15.022601970036822
+four_class_nsclc,0.0,Structural Diversity,Spearman,DyGraFS,0.3389685810135751,1.0,8.571980094909668
+four_class_nsclc,0.25,Label Propagation,Spearman,DyGraFS,0.3403854888664094,3.9333333333333327,5.043351745605468
+four_class_nsclc,0.25,Bridging Centrality,Spearman,DyGraFS,0.4388678986674659,265.8666666666667,87.35206046104432
+four_class_nsclc,0.25,Louvain,Spearman,DyGraFS,0.3906907111323418,10.133333333333333,8.997710037231446
+four_class_nsclc,0.25,Structural Diversity,Spearman,DyGraFS,0.41200875216989497,23.733333333333334,5.488510243097941
+four_class_nsclc,0.5,Label Propagation,Spearman,DyGraFS,0.4147907862200742,24.866666666666667,3.7596374670664465
+four_class_nsclc,0.5,Bridging Centrality,Spearman,DyGraFS,0.4473899980330448,265.8666666666667,50.95999743143717
+four_class_nsclc,0.5,Louvain,Spearman,DyGraFS,0.41629152226718125,28.333333333333332,6.175038003921509
+four_class_nsclc,0.5,Structural Diversity,Spearman,DyGraFS,0.43921412960673384,57.13333333333334,3.9273343880971274
+four_class_nsclc,0.75,Label Propagation,Spearman,DyGraFS,0.43925205437538245,81.4,2.7706250190734862
+four_class_nsclc,0.75,Bridging Centrality,Spearman,DyGraFS,0.44376571378617014,267.46666666666664,23.819561481475834
+four_class_nsclc,0.75,Louvain,Spearman,DyGraFS,0.4396411095188141,76.13333333333334,3.688846937815349
+four_class_nsclc,0.75,Structural Diversity,Spearman,DyGraFS,0.44572167974847954,105.53333333333335,2.8114253203074133
+four_class_nsclc,0.9,Label Propagation,Spearman,DyGraFS,0.45448542501842065,185.26666666666665,2.2754191080729167
+four_class_nsclc,0.9,Bridging Centrality,Spearman,DyGraFS,0.4456152690357548,266.8,6.910802030563355
+four_class_nsclc,0.9,Louvain,Spearman,DyGraFS,0.4435573312789579,177.53333333333336,2.7080867290496826
+four_class_nsclc,0.9,Structural Diversity,Spearman,DyGraFS,0.4511703461216639,105.53333333333335,2.2768928527832033
+four_class_nsclc,0.0,Label Propagation,Pearson,DyGraFS,0.24857154174940366,1.0,7.299364328384399
+four_class_nsclc,0.0,Bridging Centrality,Pearson,DyGraFS,0.4531177183632435,1061.0666666666666,110.99779682159424
+four_class_nsclc,0.0,Louvain,Pearson,DyGraFS,0.4163009706767574,5.0,14.119252220789594
+four_class_nsclc,0.0,Structural Diversity,Pearson,DyGraFS,0.3378990171468535,1.0,8.131056785583496
+four_class_nsclc,0.25,Label Propagation,Pearson,DyGraFS,0.33201376868607396,2.8666666666666667,3.8316526571909586
+four_class_nsclc,0.25,Bridging Centrality,Pearson,DyGraFS,0.420648324809861,267.8666666666667,74.64329856236775
+four_class_nsclc,0.25,Louvain,Pearson,DyGraFS,0.39513983958387966,7.0,6.762391074498494
+four_class_nsclc,0.25,Structural Diversity,Pearson,DyGraFS,0.4444594073532901,26.0,4.145326232910156
+four_class_nsclc,0.5,Label Propagation,Pearson,DyGraFS,0.41833009488217004,21.4,2.4384928703308106
+four_class_nsclc,0.5,Bridging Centrality,Pearson,DyGraFS,0.43883285642476244,266.06666666666666,35.10659025510152
+four_class_nsclc,0.5,Louvain,Pearson,DyGraFS,0.413222751426823,19.8,3.769143009185791
+four_class_nsclc,0.5,Structural Diversity,Pearson,DyGraFS,0.4542785419242441,63.2,2.5087219715118407
+four_class_nsclc,0.75,Label Propagation,Pearson,DyGraFS,0.4494159243752576,95.60000000000001,1.6385805130004882
+four_class_nsclc,0.75,Bridging Centrality,Pearson,DyGraFS,0.4319956945537197,268.26666666666665,11.679088385899862
+four_class_nsclc,0.75,Louvain,Pearson,DyGraFS,0.4516039168945836,86.33333333333334,2.0493278821309406
+four_class_nsclc,0.75,Structural Diversity,Pearson,DyGraFS,0.4598829724126734,105.53333333333335,1.6447148005167644
+four_class_nsclc,0.9,Label Propagation,Pearson,DyGraFS,0.45986945349868236,211.66666666666666,1.4254151662190755
+four_class_nsclc,0.9,Bridging Centrality,Pearson,DyGraFS,0.4319218361682465,267.8,2.662684122721354
+four_class_nsclc,0.9,Louvain,Pearson,DyGraFS,0.4587678329461866,198.0,1.5947767575581868
+four_class_nsclc,0.9,Structural Diversity,Pearson,DyGraFS,0.45207881870293354,105.53333333333335,1.4265852451324463
+four_class_nsclc,0.0,Label Propagation,Rho distance,DyGraFS,0.24857154174940366,1.0,7.636222759882609
+four_class_nsclc,0.0,Bridging Centrality,Rho distance,DyGraFS,0.44063116156507187,1010.6,111.57195261319478
+four_class_nsclc,0.0,Louvain,Rho distance,DyGraFS,0.3441980950195446,3.4,13.854555130004883
+four_class_nsclc,0.0,Structural Diversity,Rho distance,DyGraFS,0.3564564514567957,1.0,8.432646783192952
+four_class_nsclc,0.25,Label Propagation,Rho distance,DyGraFS,0.32951245426048725,1.0,5.591942596435547
+four_class_nsclc,0.25,Bridging Centrality,Rho distance,DyGraFS,0.4362777473368051,265.93333333333334,106.46632874806724
+four_class_nsclc,0.25,Louvain,Rho distance,DyGraFS,0.3453686276897331,2.6,9.733357000350953
+four_class_nsclc,0.25,Structural Diversity,Rho distance,DyGraFS,0.38093363165486493,3.2,6.032488552729289
+four_class_nsclc,0.5,Label Propagation,Rho distance,DyGraFS,0.418235848850424,39.06666666666667,2.0766337076822916
+four_class_nsclc,0.5,Bridging Centrality,Rho distance,DyGraFS,0.4493028525532951,266.59999999999997,23.489857149124145
+four_class_nsclc,0.5,Louvain,Rho distance,DyGraFS,0.4065321495697676,32.4,2.936553223927816
+four_class_nsclc,0.5,Structural Diversity,Rho distance,DyGraFS,0.44792751145829435,82.93333333333334,2.1086010456085207
+four_class_nsclc,0.75,Label Propagation,Rho distance,DyGraFS,0.4589024351217015,233.2,1.4426891644795736
+four_class_nsclc,0.75,Bridging Centrality,Rho distance,DyGraFS,0.44541581588050905,271.6,2.8792280832926433
+four_class_nsclc,0.75,Louvain,Rho distance,DyGraFS,0.44604666054725073,215.2,1.6008275985717773
+four_class_nsclc,0.75,Structural Diversity,Rho distance,DyGraFS,0.44714951669101943,105.53333333333335,1.4271340529123944
+four_class_nsclc,0.9,Label Propagation,Rho distance,DyGraFS,0.4530620035779851,473.6,1.3125034968058267
+four_class_nsclc,0.9,Bridging Centrality,Rho distance,DyGraFS,0.4531177183632435,1061.0666666666666,1.7083255290985107
+four_class_nsclc,0.9,Louvain,Rho distance,DyGraFS,0.44771474701210145,460.0,1.3826587200164795
+four_class_nsclc,0.9,Structural Diversity,Rho distance,DyGraFS,0.4540493284253119,105.53333333333335,1.3014934539794922

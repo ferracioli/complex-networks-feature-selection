@@ -3,14 +3,21 @@ from pipeline.model_evaluation import model_benchmarking
 
 def main():
 
+    # This function is responsible by triggering the benchmark for every dataset
+    # References for the datasets:
+    # BraTS Africa: https://www.cancerimagingarchive.net/collection/brats-africa/
+    # NSCLC: https://openradiomics.org/brats-2020/
+    # Radiomics LGG: https://www.kaggle.com/datasets/knamdar/radiomics-for-lgg-dataset
+
+    # NOTE: BraTS Africa does not have radiomic features available, you must use the comment section
+    # To extract radiomic features from its dataset
+
     extract_features = False
-    datasets = ["radiomics_lgg", "nsclc", "four_class_nsclc", "brats_africa"]
+    datasets = ["radiomics_lgg", "four_class_ncsls", "brats_africa"]
 
     for dataset in datasets:
 
-        # Only BraTS Africa requires feature extraction
-        # If you are not extracting features with pyradiomics this can be commented
-        # Pyradiomics requires installing visual studio C++ before using it
+        # NOTE: Pyradiomics requires installing visual studio C++ before using it
         # if extract_features and dataset == "brats_africa":
         #     # 1) generate dataframe
         #     print("Generating the list of available images")
