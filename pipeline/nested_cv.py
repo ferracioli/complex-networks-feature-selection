@@ -1,6 +1,3 @@
-# For each outer split, the inner loop tests all hyperparameter grid settings on 
-# $K_{inner}$ splits, identifies the single parameter set with the highest inner 
-# mean balanced accuracy, and fits that chosen setting on the outer split.
 import time
 import numpy as np
 import pandas as pd
@@ -10,7 +7,7 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, roc_auc_score
 
-# Calculates AUROC score
+# Calculates the AUROC score
 def compute_auroc(y_true, y_proba, model):
     present_classes = np.unique(y_true)
     if len(present_classes) < 2:
@@ -30,6 +27,7 @@ def jaccard(a, b):
         return np.nan
     return len(a_set & b_set) / len(a_set | b_set)
 
+# 95% confidence interval margin
 def compute_confidence_interval(data, confidence=0.95):
     clean_data = [x for x in data if not np.isnan(x)]
     if len(clean_data) < 2:
@@ -38,6 +36,7 @@ def compute_confidence_interval(data, confidence=0.95):
     margin = sem * stats.t.ppf((1 + confidence) / 2.0, len(clean_data) - 1)
     return margin
 
+# main validation function. Default: 5 outer CVs and 3 inner CVs
 def nested_cv_evaluation(X, y, selector_fn, param_grid, selector_name, outer_splits=5, inner_splits=3, return_grid_scores=False):
     """
     Executes Nested Stratified K-Fold CV.
@@ -51,7 +50,7 @@ def nested_cv_evaluation(X, y, selector_fn, param_grid, selector_name, outer_spl
     runtimes, selected_features_all, n_features_all = [], [], []
     best_params_per_fold = []
 
-    # Matrix to store inner-CV scores across folds: shape (outer_splits, len(param_grid))
+    # Matrix to store inner-CV scores across folds. shape is (outer_splits, len(param_grid))
     grid_scores_matrix = [] if return_grid_scores else None
 
     for fold, (train_idx, test_idx) in enumerate(outer_kf.split(X, y)):
@@ -62,7 +61,7 @@ def nested_cv_evaluation(X, y, selector_fn, param_grid, selector_name, outer_spl
         best_inner_score = -1.0
         fold_grid_scores = []
 
-        # Inner CV: Hyperparameter Selection
+        # Inner CV: Hyperparameter combinations
         if param_grid and len(param_grid) > 1:
             inner_kf = StratifiedKFold(n_splits=inner_splits, shuffle=True, random_state=42 + fold)
 
@@ -78,7 +77,7 @@ def nested_cv_evaluation(X, y, selector_fn, param_grid, selector_name, outer_spl
 
                     p = dict(params)
                     p["seed"] = 42 + fold
-                    # Saves the graph at the last CV split (only applicable for DyGraFS)
+                    # At the last outer CV split, stores the plot (only applicable for DyGraFS)
                     p["save_fig"] = (fold + 1 == outer_splits)
                     start_inner_time = time.time()
 
@@ -87,6 +86,7 @@ def nested_cv_evaluation(X, y, selector_fn, param_grid, selector_name, outer_spl
                     inner_runtime = time.time() - start_inner_time
                     inner_runtimes.append(inner_runtime)
 
+                    # No feature selected
                     if len(selected_in) == 0:
                         inner_scores.append(0.0)
                         inner_features.append(0)
@@ -101,6 +101,7 @@ def nested_cv_evaluation(X, y, selector_fn, param_grid, selector_name, outer_spl
                 mean_in_score = np.nanmean(inner_scores)
                 mean_in_feat = np.nanmean(inner_features)
 
+                # Specifically for DyGraFS, we are also storing inner CV performance to plot additional figures
                 if return_grid_scores:
                     mean_in_runtime = np.nanmean(inner_runtimes)
                     fold_grid_scores.append({
@@ -110,12 +111,12 @@ def nested_cv_evaluation(X, y, selector_fn, param_grid, selector_name, outer_spl
                     })
 
                 if mean_in_score > best_inner_score:
-                    # Updates the best params combination
+                    # Updates the best set of parameters
                     best_inner_score = mean_in_score
                     best_param = params
 
         else:
-            # Only 1 parameters combination available
+            # Only 1 parameters combination available, no need to iterate
             best_param = param_grid[0] if param_grid else {}
             if return_grid_scores:
                 fold_grid_scores.append({
@@ -172,8 +173,7 @@ def nested_cv_evaluation(X, y, selector_fn, param_grid, selector_name, outer_spl
     else:
         stability = np.nan
 
-    # Feature selection frequency across OUTER CV folds
-    # (This measures how often each feature was selected by the
+    # Feature selection frequency across OUTER CV folds (This measures how often each feature was selected by the
     # complete nested-CV procedure in an unbiased outer fold)
     feature_selection_frequency = {}
 
@@ -185,24 +185,21 @@ def nested_cv_evaluation(X, y, selector_fn, param_grid, selector_name, outer_spl
 
     n_valid_outer_folds = len(selected_features_all)
 
-    # Store both absolute count and frequency (%) so the result is
-    # immediately interpretable independently of the number of folds.
+    # Store both absolute count and frequency percent
     feature_selection_frequency_pct = {
         feature: (count / n_valid_outer_folds) * 100
         for feature, count in feature_selection_frequency.items()
     }
 
-    # Rank features primarily by frequency, then alphabetically for
-    # deterministic output.
+    # Rank features primarily by frequency, then alphabetically order
     feature_selection_frequency_ranked = sorted(
         feature_selection_frequency.items(),
         key=lambda x: (-x[1], x[0])
     )
 
     # Aggregate Inner Grid Scores across Outer Folds
-    # NOTE: innter grid summary is a side benchmark to evaluate DyGraFS
-    # interactions across parameters. It is not reliable for comparing
-    # selectors
+    # NOTE: innter grid summary is a side benchmark to evaluate DyGraFS interactions across 
+    # parameters. It is not reliable for comparing selectors
     inner_grid_summary = None
     if return_grid_scores and param_grid:
         inner_summary_list = []
@@ -210,8 +207,7 @@ def nested_cv_evaluation(X, y, selector_fn, param_grid, selector_name, outer_spl
         for i, params in enumerate(param_grid):
             p_dict = dict(params)
 
-            # One value per OUTER fold, where each value is already
-            # the mean selector runtime across that fold's INNER folds.
+            # One value per OUTER fold, where each value is already the mean selector runtime across that fold's INNER folds.
             accs = [
                 grid_scores_matrix[f][i]["balanced_accuracy_mean"]
                 for f in range(outer_splits)
@@ -237,6 +233,7 @@ def nested_cv_evaluation(X, y, selector_fn, param_grid, selector_name, outer_spl
         inner_grid_summary = pd.DataFrame(inner_summary_list)
 
     # Returns selector results for outer CV + optional inner CV data
+    # This will be replicated for each selector tested
     return {
         "selector": selector_name,
         "accuracy_mean": np.nanmean(outer_accs),
@@ -258,6 +255,7 @@ def nested_cv_evaluation(X, y, selector_fn, param_grid, selector_name, outer_spl
         "inner_grid_summary": inner_grid_summary
     }
 
+# Support funcion for the paired wilcoxon tests (DyGraFS vs each other selector)
 def holm_bonferroni_correction(p_values):
     """
     Step-down Holm-Bonferroni correction for family-wise error rate control.

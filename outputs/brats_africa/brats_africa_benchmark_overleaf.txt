@@ -1,0 +1,23 @@
+% Ranking metric: balanced_accuracy_mean (descending)
+% Paste directly into an Overleaf document.
+
+\begin{table}[htbp]
+\centering
+\caption{Benchmark comparison of feature selectors.}
+\label{tab:feature_selector_benchmark}
+\begin{tabular}{ccccccccc}
+\toprule
+Rank & Selector & Bal. Acc. & 95\% CI & AUROC & 95\% CI & Features & Stability & Runtime (s) \\
+\midrule
+1 & RFE (SVM) & 0.659 & 0.135 & 0.715 & 0.259 & 323.6 & 0.243 & 4.49 \\
+2 & GFSIR & 0.655 & 0.096 & 0.719 & 0.088 & 16.0 & 0.076 & 25.90 \\
+3 & Mutual Information & 0.654 & 0.104 & 0.716 & 0.209 & 1155.4 & 0.640 & 2.67 \\
+4 & Vanilla RF & 0.636 & 0.131 & 0.724 & 0.191 & 1409.0 & 1.000 & 0.00 \\
+5 & L1 Logistic Regression & 0.633 & 0.130 & 0.714 & 0.226 & 493.2 & 0.170 & 9.12 \\
+6 & Variance & 0.608 & 0.141 & 0.722 & 0.181 & 1275.0 & 0.928 & 0.01 \\
+7 & Boruta & 0.603 & 0.133 & 0.706 & 0.191 & 83.4 & 0.177 & 60.18 \\
+8 & Anova & 0.575 & 0.090 & 0.697 & 0.224 & 958.4 & 0.628 & 0.02 \\
+9 & DyGraFS & 0.558 & 0.115 & 0.635 & 0.172 & 42.6 & 0.010 & 3.40 \\
+\bottomrule
+\end{tabular}
+\end{table}

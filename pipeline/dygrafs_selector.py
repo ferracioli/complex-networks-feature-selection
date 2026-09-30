@@ -5,15 +5,14 @@ import networkx as nx
 import numpy as np
 import os
 import pandas as pd
-from sklearn.feature_selection import VarianceThreshold, f_classif
+from sklearn.feature_selection import VarianceThreshold
 from sklearn.metrics.pairwise import cosine_similarity
 from scipy.stats import spearmanr
 np.random.seed(42)
 
-# Loading the config json
-with open('input/config.json', 'r') as file:
-    config = json.load(file)
+# This module contains the DyGraFS feature selector
 
+# Secondary module destined to generate the complex network
 def generate_network(df, threshold=0.7, similarity_function="cosine"):
     """
     Generates a complex network based on the input dataframe and similarity function
@@ -102,14 +101,17 @@ def select_cn_centers(
     save_fig=False,
 ):
     """
-    Detect feature communities in a prebuilt network and return nodes according to the selected method.
-
-    Args:
-        df (radiomic DataFrame):
-        threshold (float): Correlation threshold for edge creation.
-        png_path (str): Output graph visualization path.
-        cn_selector (str): Community detection/selection method ("Label Propagation", "Louvain", "Betweeness" or "Page Rank").
-        similarity_function (str): method used for edge generation in the network
+    Main function in the DyGraFS module. You can call it this way:
+    from pipeline.dygrafs_selector import select_cn_centers
+    selected = select_cn_centers(
+        X_train,
+        threshold=0.5, -> from 0.0 to 1.0, threshold used to cut all edges with value below it
+        cn_selector="Label Propagation / Louvain / Bridging Centrality / Structural Diversity", -> your internal method to select nodes
+        similarity_function="Cosine / Spearman / Pearson / Rho Distance", --> your similary function to generate edges
+        seed_nb=42, -> optional, defines a seed
+        save_fig=False, -> optional, True if you want to generate a figure of the network after selection
+        png_path = "" -> optional, folder where you want to store the network plot
+    )
 
     Returns:
         centers (list): Selected feature names (community centers).
@@ -130,9 +132,9 @@ def select_cn_centers(
 
         centers = []
 
-        # --- Select one representative per community ---
+        # --- Select one representative node per community ---
         for comm in communities:
-            # Single-node community -> keep it
+            # For communities with one single node, selects it automatically
             if len(comm) < 2:
                 centers.extend(comm)
                 continue
@@ -143,9 +145,7 @@ def select_cn_centers(
             # Degree centrality (linear-time, local)
             degrees = dict(sub.degree())
 
-            # Select the community representative (degree + relevance to y when available)
-            # center = _select_relevance_aware_center(sub, df, y, degrees)
-            # original:
+            # detecting centers
             center = max(degrees, key=degrees.get)
             centers.append(center)
 
@@ -160,9 +160,9 @@ def select_cn_centers(
 
         centers = []
 
-        # --- Select one representative per community ---
+        # --- Select one representative node per community ---
         for comm in communities.values():
-            # Single-node community → keep it
+            # For communities with one single node, selects it automatically
             if len(comm) < 2:
                 centers.extend(comm)
                 continue
@@ -177,19 +177,6 @@ def select_cn_centers(
             # center = _select_relevance_aware_center(sub, df, y, degrees)
             center = max(degrees, key=degrees.get)
             centers.append(center)
-
-    # Page rank and betweenes were discarded in the experiment due to lower performance
-    # but they can be used as well
-    elif cn_selector == "Page Rank":
-        pr = nx.pagerank(G)
-        thr = np.percentile(list(pr.values()), 75)
-        centers = [n for n, v in pr.items() if v >= thr]
-
-    elif cn_selector == "Betweenness":
-        btw = nx.betweenness_centrality(G)
-        vals = np.array(list(btw.values()))
-        z = (vals - vals.mean()) / vals.std()
-        centers = [n for n, score in zip(G.nodes(), z) if score > 1.0]
 
     elif cn_selector == "Bridging Centrality":
         btw = nx.betweenness_centrality(G)
@@ -231,9 +218,23 @@ def select_cn_centers(
             if len(centers) >= k:
                 break
 
+    # Page rank is available but not used in the experiment
+    elif cn_selector == "Page Rank":
+        pr = nx.pagerank(G)
+        thr = np.percentile(list(pr.values()), 75)
+        centers = [n for n, v in pr.items() if v >= thr]
+
+    # Page rank is available but not used in the experiment
+    elif cn_selector == "Betweenness":
+        btw = nx.betweenness_centrality(G)
+        vals = np.array(list(btw.values()))
+        z = (vals - vals.mean()) / vals.std()
+        centers = [n for n, score in zip(G.nodes(), z) if score > 1.0]
+
     else:
         raise ValueError("Error: invalid method.")
 
+    # Saves the plot
     if save_fig:
         png_name = f"{str(threshold).replace('.', '')}_{similarity_function}_{cn_selector}_radiomic_graph.png"
         _save_graph_snapshot(G, centers, png_path, png_name.lower(), threshold, similarity_function, cn_selector, seed_nb)
@@ -243,21 +244,8 @@ def select_cn_centers(
 
 def _save_graph_snapshot(G, centers, png_path, png_file, threshold, similarity_function, cn_selector, seed_nb, dpi=70, figsize=(6, 5)):
     """
-    Renders a low-resolution PNG of the full correlation graph with the
-    selected community-center features highlighted in red (all other nodes in
-    blue), so a run's parameter combination can be inspected visually. The
-    parameter combination is expected to already be encoded in `png_path` by
-    the caller (see `graph_selector` / `generate_dygrafs_diagnostic_plots`).
-
-    Kept deliberately low-res (small figsize, dpi=70, no per-node labels,
-    since with hundreds of radiomic features labels are unreadable anyway) so
-    this is cheap enough to generate for every parameter combination tested,
-    not just the single winning one.
-
-    If a PNG already exists at `png_path`, generation is skipped: the same
-    parameter combination is evaluated many times across CV folds/inner
-    splits, and one representative snapshot per combination is the goal here,
-    not one per fold.
+    Renders a low-resolution PNG of the complex network. It will indicate nodes selected in red
+    NOTE: names of the nodes (features) are not currently being showed because this tends to polute the figure
     """
     file_path = f"{png_path}{png_file}"
 

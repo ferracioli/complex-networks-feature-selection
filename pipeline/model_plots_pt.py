@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 
+# All figures plotted in portuguese are defined here
 CN_SELECTORS = {"Label Propagation", "Bridging Centrality", "Louvain", "Structural Diversity"}
 SIMILARITY_FUNCTIONS = ["Cosine", "Spearman", "Pearson", "Rho distance"]
 
@@ -197,7 +198,7 @@ def performance_boxplot(summary, dataset, metric="balanced_accuracy"):
         label='Mean ± 95% CI'
     )
 
-    plt.xticks(x_positions, df["selector"], rotation=30, ha="right")
+    plt.xticks(x_positions, df["selector"].replace("Vanilla RF", "RF (Sem seletor)"), rotation=30, ha="right")
     metric_label = {
         "balanced_accuracy": "Acurácia Balanceada",
         "balanced_accuracy_mean": "Acurácia Balanceada (média)",
@@ -575,3 +576,4 @@ def accuracy_vs_threshold_by_cn_selector(summary, dataset):
     out_path = f"outputs/{dataset}/{dataset}_accuracy_vs_threshold_by_cn_selector_pt.png"
     plt.savefig(out_path, dpi=300)
     plt.close()
+    

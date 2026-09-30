@@ -15,6 +15,9 @@ with open('input/config.json', 'r') as file:
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import cross_val_score
 
+# Extra python code: if you want to replicate DyGraFS for real world scenarios such as Kaggle competitions,
+# you can use this as an example
+
 def run_model(X_train, y_train, X_test, patient_ids, selector_fn, selector_params):
 
     selected = selector_fn(X_train, y_train, selector_params)

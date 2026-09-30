@@ -11,12 +11,18 @@ from sklearn.feature_selection import RFE, VarianceThreshold, f_classif, mutual_
 from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression
 from boruta import BorutaPy
-
-from pipeline.dygrafs_selector import select_cn_centers #, generate_dygrafs_diagnostic_plots
+from pipeline.dygrafs_selector import select_cn_centers
 from pipeline.GFSIR.graph_feature_selection import GraphFeatureSelection
+# NOTE: you must download the GFSIR selector from their repository, and add it inside at path 
+# /complex-networs-feature-selection/pipeline/GFSIR
 import pipeline.model_plots as plots
 import pipeline.model_plots_pt as plots_pt
-from pipeline.nested_cv import nested_cv_evaluation, run_paired_wilcoxon_tests, run_pairwise_wilcoxon_tests
+from pipeline.nested_cv import nested_cv_evaluation, run_paired_wilcoxon_tests
+
+# This is the python code that will coordinate and stitch together all selectors to a same dataset,
+# Storing all results as tables and png images. nested_cv contains the internal methodology replicated
+# for each selector individually
+# Referecnehttps://github.com/hmMed22/GFSIR: https://github.com/hmMed22/GFSIR
 
 warnings.filterwarnings("ignore")
 np.random.seed(42)
@@ -25,7 +31,7 @@ VERBOSE = True # Tracing variable to enable logs
 with open('input/config.json', 'r') as file:
     config = json.load(file)
 
-# Loading all selectors with their respective params
+# Standardized definition for all selectors being used. Also allows map of the parameters being used
 def variance_selector(X_train, y_train, params=None):
     th = params.get("threshold", 1e-5) if params else 1e-5
     vt = VarianceThreshold(threshold=th)
@@ -100,7 +106,7 @@ def dygrafs_selector(X_train, y_train, params):
         save_fig=params["save_fig"], png_path=f"outputs/{params['dataset']}/feature_plots/{params['dataset']}_",
     )
 
-# Evaluates the dataset for a given model
+# Evaluates the dataset for a given model. This is the main function in this module
 def run_selector_evaluation(X, y, selector_fn, param_grid, name, outer_splits, return_grid_scores=True):
 
     # Additional information to track the evaluation status
@@ -131,7 +137,6 @@ def model_benchmarking(dataset="sample"):
     df = df.dropna(subset=[tg_column])
 
     # Failsafe to ensure that NSCLC will not include the T5 class
-    # (dataset mislabeled class with only 2 records)
     if "four_class_nsclc" in dataset:
         class_counts = df[tg_column].value_counts()
         valid_classes = class_counts[class_counts >= 5].index
@@ -144,8 +149,7 @@ def model_benchmarking(dataset="sample"):
     le = LabelEncoder()
     y = np.asarray(le.fit_transform(df[tg_column]))
 
-    min_class_size = np.min(np.bincount(y))
-    outer_splits = min(5, min_class_size)
+    outer_splits = 5
     if VERBOSE:
         print(f"Dataset Loaded | Shape: {X.shape} | Outer Splits: {outer_splits}", flush=True)
         print("\n--- Running Feature Selectors ---", flush=True)
@@ -236,7 +240,7 @@ def model_benchmarking(dataset="sample"):
     all_grid_summaries.append(res.pop("inner_grid_summary", None))
     selector_stats.append({"Selector": "Boruta", "Combinations": n_combs, "Runtime_Sec": elapsed})
 
-    # 4. GFSIR Grid
+    # 4. GFSIR Grid (also a complex network based feature selector)
     gfsir_grid_params = [
         {"gfsir_nfeatures": nf, "gfsir_minth": minth, "gfsir_maxth": maxth, "gfsir_selector": sel}
         for nf, minth, maxth, sel in itertools.product(
@@ -259,6 +263,7 @@ def model_benchmarking(dataset="sample"):
 
     total_time = time.time() - start_total_time
 
+    # Stores a txt summary with runtimes and quick results, so that you don't lose metadata from this experiment
     txt_path = f"outputs/{dataset}/{dataset}_summary.txt"
     with open(txt_path, "w") as f:
         f.write(f"Benchmark summary for '{dataset}'\n")
@@ -292,12 +297,13 @@ def model_benchmarking(dataset="sample"):
     plots.save_feature_selection_frequency(results, f"outputs/{dataset}", dataset)
     plots.save_overleaf_benchmark_table(summary, f"outputs/{dataset}/{dataset}_benchmark_overleaf.txt", ranking_metric="balanced_accuracy_mean")
 
+    # DyGraFS inner summary is destined to evaluate internal DyGraFS params
+    # It must not be used as comparison to other feature selectors
+    # NOTE: if you do not care about DyGraFS internal checks, you can remove this entire section
     if dygrafs_inner_summary is not None and len(dygrafs_inner_summary) > 0:
         # Combine summary with dygrafs_inner_summary safely for comparison plots
         grid_summary_full = pd.concat([summary, dygrafs_inner_summary], ignore_index=True)
 
-        # DyGraFS inner summary is destined to evaluate internal DyGraFS params
-        # It must not be used as comparison to other feature selectors
         plots.dygrafs_param_heatmap(dygrafs_inner_summary, dataset)
         plots_pt.dygrafs_param_heatmap(dygrafs_inner_summary, dataset)
 

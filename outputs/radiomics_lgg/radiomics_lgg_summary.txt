@@ -1,0 +1,30 @@
+Benchmark summary for 'radiomics_lgg'
+Total Execution Time: 11550.64 seconds (192.51 minutes)
+Dataset Dimensions: 105 samples, 640 features
+Outer CV Splits: 5
+
+------------------------------------------------------------
+Selector                  | Combinations | Average selector runtime (s)
+------------------------------------------------------------
+Vanilla RF                | 1            | 0.00      
+DyGraFS                   | 80           | 2.16      
+Variance                  | 5            | 0.00      
+Anova                     | 5            | 0.00      
+Mutual Information        | 15           | 1.20      
+L1 Logistic Regression    | 6            | 1.82      
+RFE (SVM)                 | 15           | 1.33      
+Boruta                    | 12           | 24.73     
+GFSIR                     | 36           | 5.37      
+------------------------------------------------------------
+
+Performance results:
+------------------------------------------------------------
+Selector: Vanilla RF           | Mean Bal Acc: 0.7435 | Avg Features: 640.00
+Selector: DyGraFS              | Mean Bal Acc: 0.6793 | Avg Features: 76.20
+Selector: Variance             | Mean Bal Acc: 0.7632 | Avg Features: 525.80
+Selector: Anova                | Mean Bal Acc: 0.7418 | Avg Features: 121.60
+Selector: Mutual Information   | Mean Bal Acc: 0.7685 | Avg Features: 83.20
+Selector: L1 Logistic Regression | Mean Bal Acc: 0.7657 | Avg Features: 141.80
+Selector: RFE (SVM)            | Mean Bal Acc: 0.7352 | Avg Features: 51.20
+Selector: Boruta               | Mean Bal Acc: 0.7317 | Avg Features: 25.80
+Selector: GFSIR                | Mean Bal Acc: 0.6912 | Avg Features: 24.00

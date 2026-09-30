@@ -1,0 +1,30 @@
+Benchmark summary for 'brats_africa'
+Total Execution Time: 54999.82 seconds (916.66 minutes)
+Dataset Dimensions: 130 samples, 1409 features
+Outer CV Splits: 5
+
+------------------------------------------------------------
+Selector                  | Combinations | Average selector runtime (s)
+------------------------------------------------------------
+Vanilla RF                | 1            | 0.00      
+DyGraFS                   | 80           | 3.40      
+Variance                  | 5            | 0.01      
+Anova                     | 5            | 0.02      
+Mutual Information        | 15           | 2.67      
+L1 Logistic Regression    | 6            | 9.12      
+RFE (SVM)                 | 15           | 4.49      
+Boruta                    | 12           | 60.18     
+GFSIR                     | 36           | 25.90     
+------------------------------------------------------------
+
+Performance results:
+------------------------------------------------------------
+Selector: Vanilla RF           | Mean Bal Acc: 0.6359 | Avg Features: 1409.00
+Selector: DyGraFS              | Mean Bal Acc: 0.5585 | Avg Features: 42.60
+Selector: Variance             | Mean Bal Acc: 0.6085 | Avg Features: 1275.00
+Selector: Anova                | Mean Bal Acc: 0.5748 | Avg Features: 958.40
+Selector: Mutual Information   | Mean Bal Acc: 0.6540 | Avg Features: 1155.40
+Selector: L1 Logistic Regression | Mean Bal Acc: 0.6327 | Avg Features: 493.20
+Selector: RFE (SVM)            | Mean Bal Acc: 0.6595 | Avg Features: 323.60
+Selector: Boruta               | Mean Bal Acc: 0.6033 | Avg Features: 83.40
+Selector: GFSIR                | Mean Bal Acc: 0.6547 | Avg Features: 16.00

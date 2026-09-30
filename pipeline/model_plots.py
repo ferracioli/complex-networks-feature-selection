@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 
+# All figures plotted in english are defined here
 CN_SELECTORS = {"Label Propagation", "Bridging Centrality", "Louvain", "Structural Diversity"}
 SIMILARITY_FUNCTIONS = ["Cosine", "Spearman", "Pearson", "Rho distance"]
 
@@ -626,11 +627,10 @@ def save_overleaf_benchmark_table(
         "selector",
         "balanced_accuracy_mean",
         "balanced_accuracy_ci95",
-        "auroc_mean",
-        "auroc_ci95",
         "features_mean",
         "feature_stability",
         "runtime_mean",
+        "p_value_vs_dygrafs_holm",
     ]
 
     columns = [c for c in preferred_columns if c in df.columns]
@@ -642,11 +642,10 @@ def save_overleaf_benchmark_table(
         "selector": "Selector",
         "balanced_accuracy_mean": "Bal. Acc.",
         "balanced_accuracy_ci95": "95\\% CI",
-        "auroc_mean": "AUROC",
-        "auroc_ci95": "95\\% CI",
         "features_mean": "Features",
         "feature_stability": "Stability",
         "runtime_mean": "Runtime (s)",
+        "p_value_vs_dygrafs_holm": "p-value (Holm)",
     }
 
     # Formatting keeps the generated table ready to paste into Overleaf.
@@ -654,12 +653,11 @@ def save_overleaf_benchmark_table(
         if col in {
             "balanced_accuracy_mean",
             "balanced_accuracy_ci95",
-            "auroc_mean",
-            "auroc_ci95",
             "feature_stability",
+            "p_value_vs_dygrafs_holm",
         }:
             table_df[col] = table_df[col].map(
-                lambda x: "--" if pd.isna(x) else f"{float(x):.3f}"
+                lambda x: "--" if pd.isna(x) else f"{float(x):.4f}"
             )
 
         elif col == "features_mean":
@@ -669,7 +667,7 @@ def save_overleaf_benchmark_table(
 
         elif col == "runtime_mean":
             table_df[col] = table_df[col].map(
-                lambda x: "--" if pd.isna(x) else f"{float(x):.2f}"
+                lambda x: "--" if pd.isna(x) else f"{float(x):.1f}"
             )
 
         elif col == "Rank":
@@ -840,3 +838,4 @@ def save_feature_selection_frequency(results, output_dir, dataset):
                     )
 
         print(f"Saved feature-selection frequency reports to: {output_dir}")
+        
