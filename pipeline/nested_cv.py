@@ -286,32 +286,81 @@ def holm_bonferroni_correction(p_values):
 
 def run_paired_wilcoxon_tests(df_results):
     """
-    Diagnostic comparison of every selector against DyGraFS specifically
-    (paired Wilcoxon signed-rank test on matched outer-CV fold scores).
-
-    NOTE: this view only tests selectors against DyGraFS, not every possible
-    pair (e.g. classical-vs-classical, or vs. GFSIR). It is kept for quick,
-    DyGraFS-centric reporting, but a Holm-Bonferroni correction is applied
-    across this subfamily of tests
+    Compare each selector against DyGraFS using paired outer-fold
+    balanced accuracies and apply Holm correction across the other
+    selectors only.
     """
-    dygrafs_row = df_results[df_results["selector"] == "DyGraFS"]
-    if dygrafs_row.empty:
+    df_results = df_results.copy()
+
+    dygrafs_rows = df_results[
+        df_results["selector"] == "DyGraFS"
+    ]
+    if dygrafs_rows.empty:
         return df_results
 
-    dygrafs_scores = dygrafs_row.iloc[0]["outer_bal_accs_folds"]
-    p_values = []
+    dygrafs_scores = np.asarray(
+        dygrafs_rows.iloc[0]["outer_bal_accs_folds"],
+        dtype=float,
+    )
 
-    for idx, row in df_results.iterrows():
-        scores = row["outer_bal_accs_folds"]
-        if scores is None or np.array_equal(scores, dygrafs_scores):
-            p_values.append(1.0)
+    is_dygrafs = (
+        df_results["selector"].eq("DyGraFS").to_numpy()
+    )
+
+    p_values = np.full(len(df_results), np.nan, dtype=float)
+
+    for pos, (_, row) in enumerate(df_results.iterrows()):
+        # Keep DyGraFS in the output, but not in the test family.
+        if is_dygrafs[pos]:
+            p_values[pos] = 1.0
             continue
+
+        scores = np.asarray(
+            row["outer_bal_accs_folds"], dtype=float
+        )
+
+        if (
+            scores.shape != dygrafs_scores.shape
+            or not np.all(np.isfinite(scores))
+        ):
+            continue
+
+        # Prevent floating-point artifacts from breaking ties.
+        differences = np.round(
+            scores - dygrafs_scores, decimals=12
+        )
+
+        if np.all(differences == 0):
+            p_values[pos] = 1.0
+            continue
+
         try:
-            _, p_val = stats.wilcoxon(scores, dygrafs_scores)
-            p_values.append(p_val)
-        except Exception:
-            p_values.append(np.nan)
+            result = stats.wilcoxon(
+                differences,
+                zero_method="wilcox",
+                alternative="two-sided",
+                method=stats.PermutationMethod(
+                    n_resamples=np.inf
+                ),
+            )
+            p_values[pos] = float(result.pvalue)
+
+        except (ValueError, FloatingPointError):
+            p_values[pos] = np.nan
 
     df_results["p_value_vs_dygrafs"] = p_values
-    df_results["p_value_vs_dygrafs_holm"] = holm_bonferroni_correction(p_values)
+
+    # Correct across the eight non-DyGraFS selectors only.
+    p_holm = np.full(len(df_results), np.nan, dtype=float)
+    comparison_mask = (~is_dygrafs) & np.isfinite(p_values)
+
+    p_holm[comparison_mask] = holm_bonferroni_correction(
+        p_values[comparison_mask]
+    )
+
+    # Retain this value for display; it is not part of the family.
+    p_holm[is_dygrafs] = 1.0
+
+    df_results["p_value_vs_dygrafs_holm"] = p_holm
+
     return df_results

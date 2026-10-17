@@ -22,7 +22,7 @@ from pipeline.nested_cv import nested_cv_evaluation, run_paired_wilcoxon_tests
 # This is the python code that will coordinate and stitch together all selectors to a same dataset,
 # Storing all results as tables and png images. nested_cv contains the internal methodology replicated
 # for each selector individually
-# Referecnehttps://github.com/hmMed22/GFSIR: https://github.com/hmMed22/GFSIR
+# Reference:https://github.com/hmMed22/GFSIR
 
 warnings.filterwarnings("ignore")
 np.random.seed(42)

@@ -13,7 +13,7 @@ np.random.seed(42)
 # This module contains the DyGraFS feature selector
 
 # Secondary module destined to generate the complex network
-def generate_network(df, threshold=0.7, similarity_function="cosine"):
+def generate_network(df, threshold=0.7, similarity_function="Cosine"):
     """
     Generates a complex network based on the input dataframe and similarity function
     
