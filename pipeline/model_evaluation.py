@@ -25,11 +25,13 @@ from pipeline.nested_cv import nested_cv_evaluation, run_paired_wilcoxon_tests
 # Reference:https://github.com/hmMed22/GFSIR
 
 warnings.filterwarnings("ignore")
-np.random.seed(42)
 VERBOSE = True # Tracing variable to enable logs
 
 with open('input/config.json', 'r') as file:
     config = json.load(file)
+
+SEEDS = config["seeds"]
+np.random.seed(SEEDS["numpy_global"])
 
 # Standardized definition for all selectors being used. Also allows map of the parameters being used
 def variance_selector(X_train, y_train, params=None):
@@ -50,7 +52,7 @@ def mi_selector(X_train, y_train, params=None):
     percentile = params.get("percentile", 50) if params else 50
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X_train)
-    scores = mutual_info_classif(X_scaled, y_train, n_neighbors=n_neighbors, random_state=42)
+    scores = mutual_info_classif(X_scaled, y_train, n_neighbors=n_neighbors, random_state=SEEDS["random_state"])
     threshold = np.percentile(scores, percentile)
     return X_train.columns[scores >= threshold].tolist()
 
@@ -58,7 +60,7 @@ def l1logistic_selector(X_train, y_train, params=None):
     c_val = params.get("C", 1.0) if params else 1.0
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X_train)
-    model = LogisticRegression(penalty="l1", solver="saga", C=c_val, class_weight="balanced", max_iter=5000, random_state=42)
+    model = LogisticRegression(penalty="l1", solver="saga", C=c_val, class_weight="balanced", max_iter=5000, random_state=SEEDS["random_state"])
     model.fit(X_scaled, y_train)
     coef = np.abs(model.coef_).sum(axis=0)
     return X_train.columns[coef > 1e-6].tolist()
@@ -68,7 +70,7 @@ def rfe_selector(X_train, y_train, params=None):
     c_val = params.get("C", 1.0) if params else 1.0
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X_train)
-    svc = SVC(kernel="linear", C=c_val, random_state=42)
+    svc = SVC(kernel="linear", C=c_val, random_state=SEEDS["random_state"])
     n_features = max(1, int(X_train.shape[1] * ratio))
     rfe = RFE(estimator=svc, n_features_to_select=n_features)
     rfe.fit(X_scaled, y_train)
@@ -80,8 +82,8 @@ def boruta_selector(X_train, y_train, params=None):
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X_train)
 
-    rf = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=1, class_weight="balanced")
-    boruta = BorutaPy(estimator=rf, n_estimators="auto", perc=perc, max_iter=max_iter, random_state=42, verbose=0)
+    rf = RandomForestClassifier(n_estimators=100, random_state=SEEDS["random_state"], n_jobs=1, class_weight="balanced")
+    boruta = BorutaPy(estimator=rf, n_estimators="auto", perc=perc, max_iter=max_iter, random_state=SEEDS["random_state"], verbose=0)
 
     y_array = y_train.values if hasattr(y_train, "values") else y_train
     boruta.fit(X_scaled, y_array)

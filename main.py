@@ -1,5 +1,7 @@
 # from pipeline.extract_features import generate_exam_dataframe, extract_radiomic_features
 from pipeline.model_evaluation import model_benchmarking
+import subprocess
+import sys
 
 def main():
 
@@ -30,6 +32,16 @@ def main():
         # 3) run model_evaluation comparing with the complex network selection
         print("Benchmarking models")
         model_benchmarking(dataset=dataset)
+
+        subprocess.run(
+            [
+                sys.executable,
+                "scripts/verify_reproducibility.py",
+                "--dataset",
+                dataset
+            ],
+            check=True
+        )
 
 if __name__ == "__main__":
     main()

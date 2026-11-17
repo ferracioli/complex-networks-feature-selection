@@ -8,7 +8,12 @@ import pandas as pd
 from sklearn.feature_selection import VarianceThreshold
 from sklearn.metrics.pairwise import cosine_similarity
 from scipy.stats import spearmanr
-np.random.seed(42)
+
+with open('input/config.json', 'r') as file:
+    config = json.load(file)
+
+SEEDS = config["seeds"]
+np.random.seed(SEEDS["numpy_global"])
 
 # This module contains the DyGraFS feature selector
 

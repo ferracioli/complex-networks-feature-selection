@@ -7,6 +7,11 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, roc_auc_score
 
+with open('input/config.json', 'r') as file:
+    config = json.load(file)
+
+SEEDS = config["seeds"]
+
 # Calculates the AUROC score
 def compute_auroc(y_true, y_proba, model):
     present_classes = np.unique(y_true)
@@ -43,7 +48,7 @@ def nested_cv_evaluation(X, y, selector_fn, param_grid, selector_name, outer_spl
     If return_grid_scores is True, records mean inner-CV validation scores across all folds
     for each hyperparameter combination to enable unbiased sensitivity plots.
     """
-    outer_kf = StratifiedKFold(n_splits=outer_splits, shuffle=True, random_state=42)
+    outer_kf = StratifiedKFold(n_splits=outer_splits, shuffle=True, random_state=SEEDS["random_state"])
 
     # Information about outer CVs
     outer_accs, outer_bal_accs, outer_aurocs = [], [], []
@@ -63,7 +68,7 @@ def nested_cv_evaluation(X, y, selector_fn, param_grid, selector_name, outer_spl
 
         # Inner CV: Hyperparameter combinations
         if param_grid and len(param_grid) > 1:
-            inner_kf = StratifiedKFold(n_splits=inner_splits, shuffle=True, random_state=42 + fold)
+            inner_kf = StratifiedKFold(n_splits=inner_splits, shuffle=True, random_state=SEEDS["random_state"] + fold)
 
             for param_num, params in enumerate(param_grid, start=1):
                 inner_scores, inner_features, inner_runtimes = [], [], []
@@ -76,7 +81,7 @@ def nested_cv_evaluation(X, y, selector_fn, param_grid, selector_name, outer_spl
                     y_tr_in, y_val_in = y_train_outer[in_train_idx], y_train_outer[in_val_idx]
 
                     p = dict(params)
-                    p["seed"] = 42 + fold
+                    p["seed"] = SEEDS["inner_cv"] + fold
                     # At the last outer CV split, stores the plot (only applicable for DyGraFS)
                     p["save_fig"] = (fold + 1 == outer_splits)
                     start_inner_time = time.time()
@@ -92,7 +97,7 @@ def nested_cv_evaluation(X, y, selector_fn, param_grid, selector_name, outer_spl
                         inner_features.append(0)
                         continue
 
-                    clf = RandomForestClassifier(n_estimators=200, random_state=42, class_weight="balanced")
+                    clf = RandomForestClassifier(n_estimators=200, random_state=SEEDS["random_state"], class_weight="balanced")
                     clf.fit(X_tr_in[selected_in], y_tr_in)
                     preds = clf.predict(X_val_in[selected_in])
                     inner_scores.append(balanced_accuracy_score(y_val_in, preds))
@@ -130,7 +135,7 @@ def nested_cv_evaluation(X, y, selector_fn, param_grid, selector_name, outer_spl
         # Outer loop: Outer evaluation based in the best param defined
         # (params used in the outer CV are based in the best inner CV param combination)
         p_outer = dict(best_param) if best_param else {}
-        p_outer["seed"] = 42 + fold
+        p_outer["seed"] = SEEDS["outer_cv"] + fold
         p_outer["save_fig"] = False
 
         start_time = time.time()
