@@ -3,3 +3,5 @@ venv
 /outputs/*/feature_plots/
 /outputs/*/feature_plots/*.png
 /pipeline/GFSIR
+outputs/four_class_nsclc/four_class_nsclc_radiomic_features.csv
+outputs/radiomics_lgg/radiomics_lgg_radiomic_features.csv
