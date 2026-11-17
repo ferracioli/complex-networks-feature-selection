@@ -13,7 +13,7 @@ def main():
     # To extract radiomic features from its dataset
 
     extract_features = False
-    datasets = ["radiomics_lgg", "four_class_ncsls", "brats_africa"]
+    datasets = ["brats_africa", "four_class_nsclc", "radiomics_lgg"]
 
     for dataset in datasets:
 

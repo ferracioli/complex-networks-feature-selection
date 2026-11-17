@@ -28,6 +28,11 @@ In case of not using GFSIR, please comment its results.append(run_eval(model_dat
 `python .\main.py`
 
 ### Supplementary information
+
+To obtain the Radiomics LGG dataset, please load it from https://www.kaggle.com/competitions/glioma-radiomics/models, then rename it to radiomics_lgg_radiomic_features.csv and move the file into outputs/radiomics_lgg
+
+To obtain the NSCLC dataset, please load it from https://openradiomics.org/tcia-nsclc/, then rename file Radiomics_ZScore_binWidth-25.csv to four_class_nsclc_radiomic_features.csv and move it into outputs/four_class_nsclc
+
 During the setup for the experiment, an external drive was used to store all the datasets used during the project. This may not impact the running of the application, and you can store the dataset at the same disk as the source code, as long as you have enough storage and map the root folder.
 
 This decision was done for the BraTS Africa dataset, since it holds a huge amount of data. This can be skipped if you do not intend to extract radiomic features.The  URL for loading the dataset can be found at: https://www.cancerimagingarchive.net/collection/BraTS-Africa/
