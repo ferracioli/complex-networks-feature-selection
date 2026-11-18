@@ -102,7 +102,7 @@ def select_cn_centers(
     png_path="folder_name",
     cn_selector="Label Propagation", 
     similarity_function="Spearman",
-    seed_nb=42,
+    seed_nb=SEEDS["inner_cv"],
     save_fig=False,
 ):
     """

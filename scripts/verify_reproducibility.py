@@ -59,16 +59,8 @@ REQUIRED_SEED_KEYS = (
     "python_hash_seed",
     "numpy_global",
     "outer_cv",
-    "inner_cv_base",
-    "fold_seed_base",
-    "inner_rf",
-    "dygrafs_base",
-    "mutual_info",
-    "l1_logistic",
-    "rfe_svc",
-    "boruta_random_forest",
-    "boruta",
-    "gfsir_spectral",
+    "inner_cv",
+    "random_state",
 )
 
 # The outer benchmark CSV stores the inner-grid DataFrame as a formatted object
